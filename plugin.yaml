@@ -1,0 +1,15 @@
+name: netscope
+version: "0.1.0"
+description: "Offline pcap/pcapng network capture analyzer with interactive HTML reports, protocol graphs, traffic replay, and deterministic anomaly heuristics. Stdlib-only, no network, no telemetry."
+author: "Mxhi-04"
+requires_hermes: ">=0.23.0"
+python_dependencies: []
+provides_tools:
+  - netscope_analyze
+  - netscope_query
+  - netscope_visualize
+provides_commands:
+  - netscope
+provides_skills:
+  - netscope
+
