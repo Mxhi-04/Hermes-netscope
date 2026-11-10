@@ -575,5 +575,5 @@ def query_analysis(result, query_type, **kwargs):
         }
 
     else:
-        return {'query': query_type, 'error': f'Unknown query type: {query_type}'}
+        return {'query': query_type, 'error': f'Unknown query type: {query_type}', 'ok': False}
 

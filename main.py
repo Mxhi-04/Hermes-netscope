@@ -36,32 +36,65 @@ def register(ctx):
     logger.info("Initializing netscope plugin...")
 
     # 1. Register tools
-    def analyze_tool(pcap_path: str, max_packets: int = None) -> str:
+    def analyze_tool(*args, **kwargs) -> str:
         """Parse and analyze a pcap/pcapng capture file."""
-        return handle_analyze(pcap_path, max_packets)
+        import json
+        params = {}
+        if args and isinstance(args[0], dict):
+            params.update(args[0])
+        elif args:
+            if len(args) >= 1:
+                params["pcap_path"] = args[0]
+            if len(args) >= 2:
+                params["max_packets"] = args[1]
+        params.update(kwargs)
+        pcap_path = params.get("pcap_path")
+        if not pcap_path:
+            return json.dumps({"ok": False, "error": "Missing required argument: pcap_path"})
+        return handle_analyze(pcap_path, params.get("max_packets"))
 
-    def query_tool(analysis_id: str, query: str, ip: str = None,
-                   n: int = 10, by: str = "bytes",
-                   start: float = None, end: float = None) -> str:
+    def query_tool(*args, **kwargs) -> str:
         """Query an analyzed capture by analysis_id."""
-        kwargs = {}
-        if ip is not None:
-            kwargs['ip'] = ip
-        if n is not None:
-            kwargs['n'] = n
-        if by is not None:
-            kwargs['by'] = by
-        if start is not None:
-            kwargs['start'] = start
-        if end is not None:
-            kwargs['end'] = end
-        return handle_query(analysis_id, query, **kwargs)
+        import json
+        params = {}
+        if args and isinstance(args[0], dict):
+            params.update(args[0])
+        elif args:
+            if len(args) >= 1:
+                params["analysis_id"] = args[0]
+            if len(args) >= 2:
+                params["query"] = args[1]
+        params.update(kwargs)
+        aid = params.get("analysis_id")
+        q = params.get("query")
+        if not aid or not q:
+            return json.dumps({"ok": False, "error": "Missing required arguments: analysis_id and query"})
+        call_kwargs = {}
+        for k in ("ip", "n", "by", "start", "end"):
+            if k in params:
+                call_kwargs[k] = params[k]
+        return handle_query(aid, q, **call_kwargs)
 
-    def visualize_tool(analysis_id: str, focus_host: str = None,
-                       protocol: str = None, start: float = None,
-                       end: float = None) -> str:
+    def visualize_tool(*args, **kwargs) -> str:
         """Generate a self-contained interactive HTML report."""
-        return handle_visualize(analysis_id, focus_host, protocol, start, end)
+        import json
+        params = {}
+        if args and isinstance(args[0], dict):
+            params.update(args[0])
+        elif args:
+            if len(args) >= 1:
+                params["analysis_id"] = args[0]
+        params.update(kwargs)
+        aid = params.get("analysis_id")
+        if not aid:
+            return json.dumps({"ok": False, "error": "Missing required argument: analysis_id"})
+        return handle_visualize(
+            aid,
+            focus_host=params.get("focus_host"),
+            protocol=params.get("protocol"),
+            start=params.get("start"),
+            end=params.get("end"),
+        )
 
     ctx.register_tool(
         name="netscope_analyze",

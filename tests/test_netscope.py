@@ -430,3 +430,37 @@ def test_registration_matches_plugin_yaml():
     assert set(ctx.tools.keys()) == set(manifest.get("provides_tools", []))
     assert set(ctx.commands.keys()) == set(manifest.get("provides_commands", []))
     assert set(ctx.skills.keys()) == set(manifest.get("provides_skills", []))
+
+
+def test_tool_handlers_accept_dict_arguments(sample_pcap_path):
+    """Verify tool wrappers accept single dict args as called by Hermes Agent: handler(args)."""
+    ctx = FakePluginContext()
+    register(ctx)
+
+    # 1. netscope_analyze with dict argument
+    analyze_handler = ctx.tools["netscope_analyze"]["handler"]
+    res1 = json.loads(analyze_handler({"pcap_path": sample_pcap_path}))
+    assert res1["ok"] is True
+    aid = res1["analysis_id"]
+
+    # Missing pcap_path returns clean structured error
+    res_no_path = json.loads(analyze_handler({}))
+    assert res_no_path["ok"] is False
+    assert "Missing" in res_no_path["error"] or "error" in res_no_path
+
+    # 2. netscope_query with dict argument
+    query_handler = ctx.tools["netscope_query"]["handler"]
+    res2 = json.loads(query_handler({"analysis_id": aid, "query": "top_talkers", "n": 3}))
+    assert res2["ok"] is True
+    assert len(res2["results"]) == 3
+
+    # Unknown query returns ok: False
+    res_bad_query = json.loads(query_handler({"analysis_id": aid, "query": "nonexistent_query"}))
+    assert res_bad_query["ok"] is False
+
+    # 3. netscope_visualize with dict argument
+    vis_handler = ctx.tools["netscope_visualize"]["handler"]
+    res3 = json.loads(vis_handler({"analysis_id": aid}))
+    assert res3["ok"] is True
+    assert "report_path" in res3
+    assert Path(res3["report_path"]).exists()

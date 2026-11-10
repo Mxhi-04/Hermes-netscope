@@ -73,6 +73,8 @@ def handle_analyze(pcap_path, max_packets=None):
         JSON string with analysis summary.
     """
     try:
+        if not pcap_path:
+            return json.dumps({'ok': False, 'error': 'Missing required argument: pcap_path'})
         if max_packets is None:
             max_packets = DEFAULT_MAX_PACKETS
 
@@ -145,7 +147,7 @@ def handle_query(analysis_id, query, **kwargs):
             kwargs['findings'] = findings
 
         result = query_analysis(analysis, query, **kwargs)
-        result['ok'] = True
+        result['ok'] = ('error' not in result) and result.get('ok', True)
         result['analysis_id'] = analysis_id
 
         return json.dumps(result, default=str)

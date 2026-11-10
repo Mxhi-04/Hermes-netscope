@@ -294,11 +294,12 @@ canvas.onmousemove=function(e){
   for(var i=0;i<N.length;i++){var n=N[i];var dx=n.x-w.x,dy=n.y-w.y;
     if(dx*dx+dy*dy<(n.r+4)*(n.r+4)){found=n;break}}
   if(found){
+    tooltip.textContent="";
+    var tIp=document.createElement("div");tIp.className="tt-ip";tIp.textContent=found.id;tooltip.appendChild(tIp);
+    var tRow=document.createElement("div");tRow.className="tt-row";tRow.textContent=fmtBytes(found.bytes)+" (↑"+fmtBytes(found.bytes_out)+" ↓"+fmtBytes(found.bytes_in)+")";tooltip.appendChild(tRow);
     var names=found.dns_names.concat(found.sni_names).slice(0,3).join(", ");
-    tooltip.innerHTML='<div class="tt-ip">'+escHTML(found.id)+'</div>'+
-      '<div class="tt-row">'+fmtBytes(found.bytes)+' (↑'+fmtBytes(found.bytes_out)+' ↓'+fmtBytes(found.bytes_in)+')</div>'+
-      (names?'<div class="tt-row">'+escHTML(names)+'</div>':'')+
-      '<div class="tt-row">'+(found.is_private?"Internal":"External")+'</div>';
+    if(names){var tN=document.createElement("div");tN.className="tt-row";tN.textContent=names;tooltip.appendChild(tN)}
+    var tRole=document.createElement("div");tRole.className="tt-row";tRole.textContent=found.is_private?"Internal":"External";tooltip.appendChild(tRole);
     tooltip.style.display="block";tooltip.style.left=(sx+12)+"px";tooltip.style.top=(sy+12)+"px";
     canvas.style.cursor="pointer";
   }else{tooltip.style.display="none";canvas.style.cursor="default"}
@@ -452,21 +453,32 @@ tlCanvas.onclick=function(e){
 
 // Sidebar rendering
 function renderSidebar(){
-  sideContent.innerHTML="";
+  sideContent.textContent="";
   if(selectedHost){
     var n=nodeMap[selectedHost];if(!n){sideContent.textContent="Host not found";return}
     var d=document.createElement("div");d.className="host-detail";
-    d.innerHTML='<h3>'+escHTML(n.id)+'</h3>'+
-      '<div class="row"><span class="label">Role</span><span>'+(n.is_private?"Internal":"External")+'</span></div>'+
-      '<div class="row"><span class="label">Total</span><span>'+fmtBytes(n.bytes)+'</span></div>'+
-      '<div class="row"><span class="label">In / Out</span><span>'+fmtBytes(n.bytes_in)+' / '+fmtBytes(n.bytes_out)+'</span></div>'+
-      '<div class="row"><span class="label">Packets</span><span>'+fmtNum(n.packets)+'</span></div>'+
-      (n.dns_names.length?'<div class="row"><span class="label">DNS</span><span>'+escHTML(n.dns_names.join(", "))+'</span></div>':'')+
-      (n.sni_names.length?'<div class="row"><span class="label">SNI</span><span>'+escHTML(n.sni_names.join(", "))+'</span></div>':'');
-    // Host findings
+    var h3=document.createElement("h3");h3.textContent=n.id;d.appendChild(h3);
+    function addRow(label, val){
+      var r=document.createElement("div");r.className="row";
+      var s1=document.createElement("span");s1.className="label";s1.textContent=label;
+      var s2=document.createElement("span");s2.textContent=val;
+      r.appendChild(s1);r.appendChild(s2);d.appendChild(r);
+    }
+    addRow("Role", n.is_private?"Internal":"External");
+    addRow("Total", fmtBytes(n.bytes));
+    addRow("In / Out", fmtBytes(n.bytes_in)+" / "+fmtBytes(n.bytes_out));
+    addRow("Packets", fmtNum(n.packets));
+    if(n.dns_names.length) addRow("DNS", n.dns_names.join(", "));
+    if(n.sni_names.length) addRow("SNI", n.sni_names.join(", "));
     var hf=F.filter(function(f){return f.hosts.indexOf(n.id)>=0});
-    if(hf.length){d.innerHTML+='<h3 style="margin-top:12px">Findings</h3>';
-      hf.forEach(function(f){d.innerHTML+='<div class="finding sev-'+f.severity+'"><div class="finding-kind">'+escHTML(f.kind.replace(/_/g," "))+'</div><div class="finding-why">'+escHTML(f.why)+'</div></div>'});
+    if(hf.length){
+      var fh3=document.createElement("h3");fh3.style.marginTop="12px";fh3.textContent="Findings";d.appendChild(fh3);
+      hf.forEach(function(f){
+        var fdiv=document.createElement("div");fdiv.className="finding sev-"+f.severity;
+        var fkind=document.createElement("div");fkind.className="finding-kind";fkind.textContent=f.kind.replace(/_/g," ");
+        var fwhy=document.createElement("div");fwhy.className="finding-why";fwhy.textContent=f.why;
+        fdiv.appendChild(fkind);fdiv.appendChild(fwhy);d.appendChild(fdiv);
+      });
     }
     sideContent.appendChild(d);
     return;
@@ -475,9 +487,13 @@ function renderSidebar(){
     if(!F.length){sideContent.textContent="No findings";return}
     F.forEach(function(f){
       var el=document.createElement("div");el.className="finding sev-"+f.severity;
-      el.innerHTML='<div class="finding-kind">'+escHTML(f.kind.replace(/_/g," "))+'</div>'+
-        '<div class="finding-badges"><span class="badge">'+f.severity+'</span><span class="badge">'+f.confidence+' confidence</span></div>'+
-        '<div class="finding-why">'+escHTML(f.why)+'</div>';
+      var fkind=document.createElement("div");fkind.className="finding-kind";fkind.textContent=f.kind.replace(/_/g," ");
+      var badges=document.createElement("div");badges.className="finding-badges";
+      var b1=document.createElement("span");b1.className="badge";b1.textContent=f.severity;
+      var b2=document.createElement("span");b2.className="badge";b2.textContent=f.confidence+" confidence";
+      badges.appendChild(b1);badges.appendChild(b2);
+      var fwhy=document.createElement("div");fwhy.className="finding-why";fwhy.textContent=f.why;
+      el.appendChild(fkind);el.appendChild(badges);el.appendChild(fwhy);
       el.onclick=function(){
         if(f.hosts.length)selectedHost=f.hosts[0];
         if(f.time_range){var t0=f.time_range[0]-S.capture_start,t1=f.time_range[1]-S.capture_start;timeWindow=[t0,t1];drawTimeline()}
@@ -489,9 +505,10 @@ function renderSidebar(){
     var sorted=N.slice().sort(function(a,b){return b.bytes-a.bytes});
     sorted.slice(0,50).forEach(function(n){
       var el=document.createElement("div");el.className="finding";
-      el.innerHTML='<div class="finding-kind">'+escHTML(n.id)+'</div>'+
-        '<div class="finding-why">'+fmtBytes(n.bytes)+' · '+(n.is_private?"Internal":"External")+
-        (n.dns_names.length?' · '+escHTML(n.dns_names[0]):'')+'</div>';
+      var fkind=document.createElement("div");fkind.className="finding-kind";fkind.textContent=n.id;
+      var fwhy=document.createElement("div");fwhy.className="finding-why";
+      fwhy.textContent=fmtBytes(n.bytes)+" · "+(n.is_private?"Internal":"External")+(n.dns_names.length?" · "+n.dns_names[0]:"");
+      el.appendChild(fkind);el.appendChild(fwhy);
       el.onclick=function(){selectedHost=n.id;renderSidebar()};
       sideContent.appendChild(el);
     });
