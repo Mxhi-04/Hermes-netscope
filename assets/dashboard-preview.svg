@@ -89,7 +89,7 @@
 
   <!-- Logo and Stats Pill Header -->
   <g class="mono-ui">
-    <text x="80" y="29" fill="#4FC3F7" font-size="14" font-weight="700">⬡ netScope Interactive Dashboard</text>
+    <text x="80" y="29" fill="#FFB74D" font-size="13" font-weight="700">⚚ netScope Dashboard <tspan fill="#9095A8" font-weight="400">//</tspan> <tspan fill="#4FC3F7">Hermes Forensics</tspan></text>
     
     <!-- Stats Chips -->
     <rect x="330" y="14" width="88" height="20" rx="10" fill="#252833"/>
