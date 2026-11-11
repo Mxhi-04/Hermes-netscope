@@ -7,7 +7,12 @@ Language: "looks like / consistent with", never "is". No verdicts.
 """
 
 import math
-from collections import defaultdict
+from collections import Counter, defaultdict
+
+if __package__:
+    from .analyze import FlowKey
+else:
+    from analyze import FlowKey
 
 
 def _median(values):
@@ -121,40 +126,51 @@ def detect_port_scan(result):
             src_flows[fk.src_ip].append(flow)
 
     for src_ip, flows in src_flows.items():
-        flows_sorted = sorted(flows, key=lambda f: f.first_seen
-                               if f.first_seen != float('inf') else 0)
+        flows_sorted = sorted((f for f in flows if math.isfinite(f.first_seen)),
+                              key=lambda f: f.first_seen)
 
-        # Sliding window of 60s
+        # Incremental counters keep dense, successful traffic linear after
+        # sorting, instead of rebuilding every growing 60-second window.
         window_start = 0
+        targets = Counter()
+        no_synack_count = 0
+        rst_count = 0
+
+        def rsts(flow):
+            fk = flow.key
+            reverse = result.flows.get(FlowKey(fk.dst_ip, fk.src_ip, fk.dst_port, fk.src_port, fk.proto))
+            return flow.rst_count + (reverse.rst_count if reverse else 0)
+
         for i, flow in enumerate(flows_sorted):
+            if not math.isfinite(flow.first_seen):
+                break
+            targets[(flow.key.dst_ip, flow.key.dst_port)] += 1
+            no_synack_count += not flow.syn_ack_seen
+            rst_count += rsts(flow)
             while (window_start < i and
-                   flows_sorted[i].first_seen - flows_sorted[window_start].first_seen > 60):
+                   flow.first_seen - flows_sorted[window_start].first_seen > 60):
+                old = flows_sorted[window_start]
+                target = (old.key.dst_ip, old.key.dst_port)
+                targets[target] -= 1
+                if not targets[target]:
+                    del targets[target]
+                no_synack_count -= not old.syn_ack_seen
+                rst_count -= rsts(old)
                 window_start += 1
-
-            window = flows_sorted[window_start:i+1]
-            if len(window) < 20:
+            window_length = i - window_start + 1
+            if window_length < 20:
                 continue
-
-            # Count distinct (dst, dport) pairs
-            targets = set()
-            no_synack_count = 0
-            rst_count = 0
-            for f in window:
-                targets.add((f.key.dst_ip, f.key.dst_port))
-                if not f.syn_ack_seen:
-                    no_synack_count += 1
-                rst_count += f.rst_count
 
             if len(targets) < 20:
                 continue
 
             # Check if mostly unsuccessful
-            failure_ratio = no_synack_count / len(window)
+            failure_ratio = no_synack_count / window_length
             if failure_ratio < 0.7:
                 continue
 
-            ts_start = window[0].first_seen if window[0].first_seen != float('inf') else 0
-            ts_end = window[-1].first_seen if window[-1].first_seen != float('inf') else 0
+            ts_start = flows_sorted[window_start].first_seen
+            ts_end = flow.first_seen
             dst_ips = set(t[0] for t in targets)
             dst_ports = set(t[1] for t in targets)
 
@@ -170,7 +186,7 @@ def detect_port_scan(result):
                         f"initiated connections to {len(targets)} distinct (host, port) pairs "
                         f"across {len(dst_ips)} hosts and {len(dst_ports)} ports "
                         f"within {ts_end - ts_start:.0f}s. "
-                        f"{no_synack_count}/{len(window)} connections "
+                        f"{no_synack_count}/{window_length} connections "
                         f"({failure_ratio:.0%}) had no SYN-ACK response, "
                         f"with {rst_count} RST packets observed."),
             })
@@ -192,9 +208,12 @@ def detect_beaconing(result):
     for fk, flow in result.flows.items():
         if fk.proto == 6 and flow.syn_seen:  # TCP with SYN
             key = (fk.src_ip, fk.dst_ip, fk.dst_port)
-            ts = flow.first_seen if flow.first_seen != float('inf') else 0
-            if ts > 0:
-                beacon_groups[key].append(ts)
+            # Use all observed starts, so reusing a five-tuple does not hide
+            # periodic activity. Deduplicate identical timestamps below.
+            if flow.syn_starts:
+                beacon_groups[key].extend(flow.syn_starts)
+            elif flow.first_seen != float('inf'):
+                beacon_groups[key].append(flow.first_seen)
 
     # Also check UDP flows
     udp_groups = defaultdict(list)
@@ -210,7 +229,9 @@ def detect_beaconing(result):
             if len(timestamps) < 8:
                 continue
 
-            timestamps.sort()
+            timestamps = sorted(set(timestamps))
+            if len(timestamps) < 8:
+                continue
             intervals = [timestamps[i+1] - timestamps[i]
                          for i in range(len(timestamps) - 1)]
 
@@ -263,13 +284,10 @@ def detect_dns_oddities(result):
     # in result.dns_queries: (ts, qname, qtype, rcode_or_none, src_ip)
     # When rcode is None, it was a client query from src_ip!
     src_client_queries = defaultdict(list)
-    src_responses = defaultdict(list)
 
     for ts, qname, qtype, rcode, src_ip in result.dns_queries:
         if rcode is None:
             src_client_queries[src_ip].append((ts, qname, qtype))
-        else:
-            src_responses[src_ip].append((ts, qname, qtype, rcode))
 
     for src_ip, queries in src_client_queries.items():
         # Check for long/high-entropy labels
@@ -283,9 +301,9 @@ def detect_dns_oddities(result):
                     long_queries.append((ts, qname, label))
                     break
                 if len(label) > 15:
-                    unique_chars = len(set(label.lower()))
-                    entropy_ratio = unique_chars / len(label)
-                    if entropy_ratio > 0.6 and len(label) > 20:
+                    frequencies = {c: label.lower().count(c) / len(label) for c in set(label.lower())}
+                    entropy = -sum(p * math.log2(p) for p in frequencies.values())
+                    if entropy > 4.0 and len(label) > 20:
                         long_queries.append((ts, qname, label))
                         break
 
@@ -361,8 +379,9 @@ def detect_cleartext(result):
                            if result.capture_start != float('inf') else 0,
                            result.capture_end],
             'why': (f"Cleartext protocols observed: {proto_list}. "
-                    f"These protocols transmit data without encryption. "
-                    f"Payload content was not inspected or stored."),
+                    f"These port assignments suggest traffic that may be unencrypted; "
+                    f"ports alone do not prove the protocol. Only protocol metadata "
+                    f"was extracted; credentials and payload bodies were not retained."),
         })
 
     return findings

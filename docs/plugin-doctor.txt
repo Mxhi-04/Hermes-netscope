@@ -1,0 +1,4 @@
+Plugin Doctor: <plugin directory>
+  manifest: netscope 0.1.0 (standalone)
+  OK: runtime discovery, manifest parsing, import, and registration passed
+  registrations: 3 tool(s), 0 hook(s)

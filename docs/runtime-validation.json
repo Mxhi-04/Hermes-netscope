@@ -1,0 +1,29 @@
+{
+  "hermes_commit": "78abaafcccec20a546c94e8734a70e38c08a6a69",
+  "doctor_ok": true,
+  "registered_tools": [
+    "netscope_analyze",
+    "netscope_query",
+    "netscope_visualize"
+  ],
+  "dispatch": {
+    "analyze": true,
+    "query": true,
+    "visualize": true
+  },
+  "sample": {
+    "total_packets": 1480,
+    "total_bytes": 526635,
+    "host_count": 20,
+    "flow_count": 812,
+    "capture_duration_sec": 278.957
+  },
+  "finding_kinds": [
+    "beaconing",
+    "cleartext_protocols",
+    "dns_long_labels",
+    "dns_many_subdomains",
+    "port_scan",
+    "traffic_spike"
+  ]
+}

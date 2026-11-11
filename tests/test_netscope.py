@@ -10,12 +10,9 @@ Tests:
 - Registration: contract check between plugin.yaml and register(ctx)
 """
 
-import os
 import sys
 import struct
-import tempfile
 import json
-import re
 import pytest
 from pathlib import Path
 
@@ -26,14 +23,9 @@ if PLUGIN_ROOT not in sys.path:
 
 from pcap_reader import (
     read_pcap, validate_path, PcapError, Packet,
-    PCAP_MAGIC_LE_US, PCAP_MAGIC_LE_NS,
-    PCAPNG_SHB_MAGIC, PCAPNG_BOM, BT_IDB, BT_EPB, BT_SPB,
-    LINKTYPE_ETHERNET, LINKTYPE_LINUX_SLL, LINKTYPE_RAW_IP
+    PCAP_MAGIC_LE_US, PCAPNG_SHB_MAGIC, PCAPNG_BOM, BT_IDB, BT_EPB, LINKTYPE_ETHERNET
 )
 from decode import decode_packet, DecodedPacket, _sanitize_string
-from analyze import analyze_packets, query_analysis, get_top_hosts
-from heuristics import detect_all, detect_traffic_spikes, detect_port_scan, detect_beaconing, detect_dns_oddities
-from report import generate_report
 from tools import handle_analyze, handle_query, handle_visualize
 from main import register
 from examples.make_sample_pcap import generate_sample_pcap

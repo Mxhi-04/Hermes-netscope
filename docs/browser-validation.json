@@ -1,0 +1,7 @@
+{
+  "errors": [],
+  "requests": [
+    "local file report"
+  ],
+  "checks": "desktop/mobile layout; protocol filters; host selection; replay pause/resume; zero network requests"
+}

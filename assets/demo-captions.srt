@@ -1,0 +1,31 @@
+1
+00:00:02,350 --> 00:00:06,884
+Meet NetScope. A community plugin built for Hermes Agent, from Nous Research.
+
+2
+00:00:07,884 --> 00:00:13,435
+Turn a local packet capture into a network investigation. No cloud uploads. No runtime dependencies.
+
+3
+00:00:14,435 --> 00:00:21,487
+Here is a real run on the bundled synthetic capture. Fourteen hundred and eighty packets. Twenty hosts. Eight hundred and twelve flows.
+
+4
+00:00:22,487 --> 00:00:28,946
+Three native tools let Hermes analyze traffic, answer structured follow up questions, and create an interactive report.
+
+5
+00:00:29,946 --> 00:00:38,522
+Spot scan like behavior, periodic connections, unusual DNS labels, and sudden traffic bursts. Every finding explains the numbers behind it.
+
+6
+00:00:39,522 --> 00:00:48,664
+Explore the real network graph. Filter protocols, inspect a host, and replay the capture timeline. One HTML file, with no external assets.
+
+7
+00:00:49,664 --> 00:00:57,337
+Packet bodies stay out of reports. Findings are observations, not security verdicts. Capture limits and parsing warnings stay visible.
+
+8
+00:00:58,337 --> 00:01:06,546
+NetScope for Hermes Agent. Open source. Local analysis. Clearer answers. Explore the code, run the demo, and make the network legible.

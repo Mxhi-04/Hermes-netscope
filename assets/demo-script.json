@@ -1,0 +1,66 @@
+[
+  {
+    "title": "A signal in the noise.",
+    "text": "Meet NetScope. A community plugin built for Hermes Agent, from Nous Research.",
+    "voice_duration": 4.533875,
+    "duration": 5.533875,
+    "start": 2,
+    "end": 7.533875
+  },
+  {
+    "title": "Your capture. Your machine.",
+    "text": "Turn a local packet capture into a network investigation. No cloud uploads. No runtime dependencies.",
+    "voice_duration": 5.551166666666667,
+    "duration": 6.551166666666667,
+    "start": 7.533875,
+    "end": 14.085041666666667
+  },
+  {
+    "title": "One capture. Every connection.",
+    "text": "Here is a real run on the bundled synthetic capture. Fourteen hundred and eighty packets. Twenty hosts. Eight hundred and twelve flows.",
+    "voice_duration": 7.051875,
+    "duration": 8.051874999999999,
+    "start": 14.085041666666667,
+    "end": 22.136916666666664
+  },
+  {
+    "title": "Ask. Inspect. Understand.",
+    "text": "Three native tools let Hermes analyze traffic, answer structured follow up questions, and create an interactive report.",
+    "voice_duration": 6.458875,
+    "duration": 7.458875,
+    "start": 22.136916666666664,
+    "end": 29.595791666666663
+  },
+  {
+    "title": "Patterns become evidence.",
+    "text": "Spot scan like behavior, periodic connections, unusual DNS labels, and sudden traffic bursts. Every finding explains the numbers behind it.",
+    "voice_duration": 8.576625,
+    "duration": 9.576625,
+    "start": 29.595791666666663,
+    "end": 39.17241666666666
+  },
+  {
+    "title": "Follow the conversation.",
+    "text": "Explore the real network graph. Filter protocols, inspect a host, and replay the capture timeline. One HTML file, with no external assets.",
+    "voice_duration": 9.141791666666666,
+    "duration": 10.141791666666666,
+    "start": 39.17241666666666,
+    "end": 49.314208333333326
+  },
+  {
+    "title": "Private by design.",
+    "text": "Packet bodies stay out of reports. Findings are observations, not security verdicts. Capture limits and parsing warnings stay visible.",
+    "voice_duration": 7.673208333333333,
+    "duration": 8.673208333333333,
+    "start": 49.314208333333326,
+    "end": 57.98741666666666
+  },
+  {
+    "title": "Make the network legible.",
+    "text": "NetScope for Hermes Agent. Open source. Local analysis. Clearer answers. Explore the code, run the demo, and make the network legible.",
+    "voice_duration": 8.209083333333334,
+    "duration": 9.209083333333334,
+    "start": 57.98741666666666,
+    "end": 67.1965
+  }
+]

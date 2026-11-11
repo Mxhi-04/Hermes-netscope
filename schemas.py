@@ -20,6 +20,8 @@ ANALYZE_SCHEMA = {
             },
             "max_packets": {
                 "type": "integer",
+                "minimum": 1,
+                "maximum": 2000000,
                 "description": "Maximum number of packets to read (default: 2000000)."
             }
         },
@@ -54,7 +56,9 @@ QUERY_SCHEMA = {
             },
             "n": {
                 "type": "integer",
-                "description": "Number of results for top_talkers/conversations (default: 10)."
+                "minimum": 1,
+                "maximum": 1000,
+                "description": "Number of results (default: 10 for top_talkers, 20 for conversations)."
             },
             "by": {
                 "type": "string",

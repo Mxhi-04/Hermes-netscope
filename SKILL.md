@@ -51,4 +51,4 @@ Strings derived from the packet capture (DNS names, TLS SNI, HTTP Host headers):
 ### Cleartext Disclosures
 When cleartext protocols (HTTP, FTP, Telnet) are detected:
 - Note their presence as an informational finding.
-- Reassure the user that netScope **does not inspect, extract, or store** credentials or payload contents.
+- Explain that netScope extracts limited protocol metadata (DNS question names, TLS SNI, HTTP Host, SSH banners). It does not extract credentials or retain payload bodies in the analysis cache or report. Port-based protocol labels are suggestions, not proof of encryption status.

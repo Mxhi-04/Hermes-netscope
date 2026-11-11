@@ -13,6 +13,8 @@ packet count, and time budget.
 import struct
 import time
 import os
+import math
+import stat
 from pathlib import Path
 
 # Classic pcap magic numbers
@@ -123,7 +125,11 @@ def _read_classic_pcap(f, file_size, max_packets, time_budget):
 
     hdr = _read_exact(f, 20)
     snaplen = struct.unpack(endian + 'I', hdr[12:16])[0]
-    link_type = struct.unpack(endian + 'I', hdr[16:20])[0]
+    if struct.unpack(endian + 'HH', hdr[:4]) != (2, 4):
+        raise PcapError('Unsupported pcap version (expected 2.4)')
+    if snaplen == 0:
+        raise PcapError('Invalid pcap snaplen: 0')
+    link_type = struct.unpack(endian + 'I', hdr[16:20])[0] & 0xffff
     result.link_types.add(link_type)
 
     supported = link_type in SUPPORTED_LINKTYPES
@@ -131,6 +137,8 @@ def _read_classic_pcap(f, file_size, max_packets, time_budget):
     pkt_hdr_size = 16
 
     while True:
+        if f.tell() >= file_size:
+            break
         if result.packet_count >= max_packets:
             result.truncated = True
             result.truncation_reason = f"Packet limit reached ({max_packets})"
@@ -157,8 +165,10 @@ def _read_classic_pcap(f, file_size, max_packets, time_budget):
             result.errors.append("Malformed packet header")
             break
 
-        if incl_len > 262144:
+        if incl_len > 262144 or incl_len > snaplen or incl_len > orig_len or ts_frac >= ts_divisor:
             result.errors.append(f"Unreasonable packet length: {incl_len}")
+            result.truncated = True
+            result.truncation_reason = 'Invalid packet lengths or timestamp'
             break
 
         pkt_data = f.read(incl_len)
@@ -213,160 +223,117 @@ def _read_pcapng(f, file_size, max_packets, time_budget):
     result.file_size = file_size
     start_time = time.monotonic()
 
-    interfaces = []   # list of (link_type, ts_resol) tuples
+    interfaces = []  # (link type, timestamp divisor, snaplen, timestamp offset)
     endian = '<'
-
     f.seek(0)
 
-    while True:
+    def fail(message):
+        result.errors.append(message)
+        result.truncated = True
+        result.truncation_reason = message
+
+    while f.tell() < file_size:
         if result.packet_count >= max_packets:
-            result.truncated = True
-            result.truncation_reason = f"Packet limit reached ({max_packets})"
+            fail(f"Packet limit reached ({max_packets})")
             break
-
-        elapsed = time.monotonic() - start_time
-        if elapsed > time_budget:
-            result.truncated = True
-            result.truncation_reason = f"Time budget exceeded ({time_budget}s)"
+        if time.monotonic() - start_time > time_budget:
+            fail(f"Time budget exceeded ({time_budget}s)")
             break
-
-        blk_hdr = f.read(8)
-        if len(blk_hdr) == 0:
+        block_start = f.tell()
+        header = f.read(8)
+        if len(header) < 8:
+            fail('Truncated block header')
             break
-        if len(blk_hdr) < 8:
-            result.errors.append("Truncated block header at EOF")
-            result.truncated = True
-            result.truncation_reason = "Truncated block header"
-            break
-
-        # Check block type with current endian
-        btype = struct.unpack(endian + 'I', blk_hdr[0:4])[0]
-        blen = struct.unpack(endian + 'I', blk_hdr[4:8])[0]
-
-        # Handle SHB (Section Header Block) which sets endianness
-        if btype == PCAPNG_SHB_MAGIC:
-            # Read first 4 bytes of body to inspect BOM
-            bom_raw = f.read(4)
-            if len(bom_raw) < 4:
-                result.errors.append("Truncated SHB BOM")
-                break
-            bom_val = struct.unpack('<I', bom_raw)[0]
-            if bom_val == PCAPNG_BOM:
+        is_section = header[:4] == struct.pack('<I', PCAPNG_SHB_MAGIC)
+        prefix = b''
+        if is_section:
+            prefix = f.read(4)
+            if prefix == struct.pack('<I', PCAPNG_BOM):
                 endian = '<'
-            elif bom_val == PCAPNG_BOM_SWAPPED:
+            elif prefix == struct.pack('>I', PCAPNG_BOM):
                 endian = '>'
             else:
-                # Try big endian unpack
-                bom_val_be = struct.unpack('>I', bom_raw)[0]
-                if bom_val_be == PCAPNG_BOM:
-                    endian = '>'
-                else:
-                    endian = '<'
-
-            # Re-read block length with determined endian
-            blen = struct.unpack(endian + 'I', blk_hdr[4:8])[0]
-            if blen < 12:
-                result.errors.append(f"Invalid SHB block length: {blen}")
+                fail('Invalid or truncated pcapng byte order magic')
                 break
-            # Skip remainder of SHB
-            remaining = blen - 12
-            if remaining > 0:
-                f.read(remaining)
-            interfaces = []  # new section resets interfaces
+        btype, blen = struct.unpack(endian + 'II', header)
+        minimum = 28 if is_section else 12
+        if blen < minimum or blen % 4 or blen > file_size - block_start:
+            fail('Invalid or truncated pcapng block length')
+            break
+        # Unknown blocks can be skipped without allocating their bodies.
+        if not is_section and btype not in (BT_IDB, BT_EPB, BT_SPB):
+            f.seek(block_start + blen - 4)
+            if _read_exact(f, 4) != struct.pack(endian + 'I', blen):
+                fail('Mismatched pcapng block length trailer')
+                break
             continue
-
-        if blen < 12:
-            result.errors.append(f"Invalid block length: {blen}")
+        if blen > 1024 * 1024:
+            fail('pcapng packet or interface block exceeds 1 MiB limit')
             break
-
-        body_len = blen - 8
-        body = f.read(body_len)
-        if len(body) < body_len:
-            result.errors.append("Truncated block body")
-            result.truncated = True
-            result.truncation_reason = "Truncated block"
+        block = prefix + f.read(blen - 8 - len(prefix))
+        if block[-4:] != struct.pack(endian + 'I', blen):
+            fail('Mismatched pcapng block length trailer')
             break
-
-        body = body[:-4]  # strip trailing block length
-
+        body = block[:-4]
+        if is_section:
+            if struct.unpack(endian + 'HH', body[4:8]) != (1, 0):
+                fail('Unsupported pcapng section version')
+                break
+            interfaces = []
+            continue
         if btype == BT_IDB:
             if len(body) < 8:
-                interfaces.append((LINKTYPE_ETHERNET, 1_000_000))
-                continue
-            lt = struct.unpack(endian + 'H', body[0:2])[0]
+                fail('Truncated interface description')
+                break
+            lt, _, snaplen = struct.unpack(endian + 'HHI', body[:8])
+            opts = _parse_pcapng_options(body[8:], endian)
+            resolution = opts.get(9, b'\x06')
+            if len(resolution) != 1:
+                fail('Invalid interface timestamp resolution')
+                break
+            value = resolution[0]
+            divisor = 2 ** (value & 127) if value & 128 else 10 ** value
+            offset_data = opts.get(14, b'\x00' * 8)
+            if len(offset_data) != 8:
+                fail('Invalid interface timestamp offset')
+                break
+            ts_offset = struct.unpack(endian + 'q', offset_data)[0]
+            interfaces.append((lt, divisor, snaplen, ts_offset))
             result.link_types.add(lt)
-
-            ts_resol_base = 1_000_000
-            if len(body) > 8:
-                opts = _parse_pcapng_options(body[8:], endian)
-                if 9 in opts and len(opts[9]) >= 1:
-                    tsresol_byte = opts[9][0]
-                    if tsresol_byte & 0x80:
-                        ts_resol_base = 2 ** (tsresol_byte & 0x7f)
-                    else:
-                        ts_resol_base = 10 ** tsresol_byte
-
-            interfaces.append((lt, ts_resol_base))
-
-        elif btype == BT_EPB:
+            continue
+        if btype == BT_EPB:
             if len(body) < 20:
-                result.errors.append("Truncated EPB")
-                continue
-
-            iface_id = struct.unpack(endian + 'I', body[0:4])[0]
-            ts_high = struct.unpack(endian + 'I', body[4:8])[0]
-            ts_low = struct.unpack(endian + 'I', body[8:12])[0]
-            cap_len = struct.unpack(endian + 'I', body[12:16])[0]
-            orig_len = struct.unpack(endian + 'I', body[16:20])[0]
-
-            if iface_id < len(interfaces):
-                lt, ts_resol = interfaces[iface_id]
-            else:
-                lt, ts_resol = (LINKTYPE_ETHERNET, 1_000_000)
-
-            ts_raw = (ts_high << 32) | ts_low
-            timestamp = ts_raw / ts_resol
-            pkt_data = body[20:20+cap_len]
-
-            if lt in SUPPORTED_LINKTYPES:
-                pkt = Packet(
-                    timestamp=timestamp,
-                    captured_len=cap_len,
-                    original_len=orig_len,
-                    data=pkt_data,
-                    link_type=lt,
-                    interface_id=iface_id,
-                )
-                result.packets.append(pkt)
-            else:
-                result.unsupported_packets += 1
-
-            result.packet_count += 1
-
-        elif btype == BT_SPB:
-            if len(body) < 4:
-                result.errors.append("Truncated SPB")
-                continue
-
-            orig_len = struct.unpack(endian + 'I', body[0:4])[0]
-            lt = interfaces[0][0] if interfaces else LINKTYPE_ETHERNET
-            pkt_data = body[4:]
-            cap_len = len(pkt_data)
-
-            if lt in SUPPORTED_LINKTYPES:
-                pkt = Packet(
-                    timestamp=0.0,
-                    captured_len=cap_len,
-                    original_len=orig_len,
-                    data=pkt_data,
-                    link_type=lt,
-                    interface_id=0,
-                )
-                result.packets.append(pkt)
-            else:
-                result.unsupported_packets += 1
-
-            result.packet_count += 1
+                fail('Truncated enhanced packet block')
+                break
+            iface, high, low, cap_len, orig_len = struct.unpack(endian + 'IIIII', body[:20])
+            if iface >= len(interfaces):
+                fail('Packet references an undefined interface')
+                break
+            lt, divisor, snaplen, ts_offset = interfaces[iface]
+            if (cap_len > orig_len or cap_len > 262144 or
+                    (snaplen and cap_len > snaplen) or 20 + ((cap_len + 3) & ~3) > len(body)):
+                fail('Invalid enhanced packet captured length')
+                break
+            timestamp = ((high << 32) | low) / divisor + ts_offset
+            pkt_data = body[20:20 + cap_len]
+        else:  # Simple Packet Block: no timestamp, interface zero only.
+            if len(body) < 4 or not interfaces:
+                fail('Simple packet block requires an interface and original length')
+                break
+            iface = 0
+            lt, _, snaplen, _ = interfaces[0]
+            orig_len = struct.unpack(endian + 'I', body[:4])[0]
+            cap_len = min(orig_len, snaplen) if snaplen else orig_len
+            if cap_len > 262144 or len(body) != 4 + ((cap_len + 3) & ~3):
+                fail('Invalid simple packet captured length')
+                break
+            pkt_data = body[4:4 + cap_len]
+            timestamp = None
+        if lt in SUPPORTED_LINKTYPES:
+            result.packets.append(Packet(timestamp, cap_len, orig_len, pkt_data, lt, iface))
+        else:
+            result.unsupported_packets += 1
+        result.packet_count += 1
 
     result.duration_sec = time.monotonic() - start_time
     return result
@@ -375,8 +342,8 @@ def _read_pcapng(f, file_size, max_packets, time_budget):
 def validate_path(pcap_path, max_file_size=DEFAULT_MAX_FILE_SIZE):
     """Validate a file path for reading."""
     try:
-        p = Path(pcap_path).resolve()
-    except (ValueError, OSError) as e:
+        p = Path(pcap_path).expanduser().resolve()
+    except (TypeError, ValueError, OSError, RuntimeError) as e:
         return None, f"Invalid path: {e}"
 
     if not p.exists():
@@ -400,13 +367,23 @@ def read_pcap(pcap_path, max_packets=DEFAULT_MAX_PACKETS,
               max_file_size=DEFAULT_MAX_FILE_SIZE,
               time_budget=DEFAULT_TIME_BUDGET):
     """Read a pcap or pcapng file."""
+    if isinstance(max_packets, bool) or not isinstance(max_packets, int) or not 1 <= max_packets <= DEFAULT_MAX_PACKETS:
+        raise PcapError(f'max_packets must be an integer between 1 and {DEFAULT_MAX_PACKETS}')
+    for name, value in (('time_budget', time_budget), ('max_file_size', max_file_size)):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+            raise PcapError(f'{name} must be positive and finite')
     resolved, err = validate_path(pcap_path, max_file_size)
     if err:
         raise PcapError(err)
 
     file_size = os.path.getsize(resolved)
 
-    with open(resolved, 'rb') as f:
+    fd = os.open(resolved, os.O_RDONLY | getattr(os, 'O_NONBLOCK', 0))
+    with os.fdopen(fd, 'rb') as f:
+        opened = os.fstat(f.fileno())
+        if not stat.S_ISREG(opened.st_mode) or opened.st_size > max_file_size:
+            raise PcapError('Capture must be a regular file within the configured size limit')
+        file_size = opened.st_size
         magic_bytes = f.read(4)
         if len(magic_bytes) < 4:
             raise PcapError("File too small to be a capture file")

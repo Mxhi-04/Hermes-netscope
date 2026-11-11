@@ -1,0 +1,11 @@
+{
+  "duration_seconds": 69.2,
+  "resolution": "1920x1080",
+  "fps": 30,
+  "video_codec": "H.264",
+  "audio_codec": "AAC",
+  "audio_sample_rate_hz": 48000,
+  "voice": "Sarvam bulbul:v3 / ishita / en-IN / pace 1.12",
+  "file_size_bytes": 4626503,
+  "verified": "Decoded final MP4 frames at nine timestamps; first and final brand cards; real report footage; readable typography; no clipping reported by audio analysis."
+}

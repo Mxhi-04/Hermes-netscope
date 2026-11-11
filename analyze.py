@@ -24,7 +24,6 @@ def _auto_bucket_size(duration_sec):
     if duration_sec <= 0:
         return 1.0
     # Target ~200 buckets
-    ideal = duration_sec / 200.0
     # Snap to nice intervals
     nice = [0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600]
     for n in nice:
@@ -104,7 +103,7 @@ class FlowKey:
 class FlowStats:
     """Per-flow statistics."""
     __slots__ = ('key', 'bytes_total', 'packets', 'first_seen', 'last_seen',
-                 'syn_seen', 'syn_ack_seen', 'rst_count', 'protocol_name')
+                 'syn_seen', 'syn_ack_seen', 'rst_count', 'protocol_name', 'syn_starts')
 
     def __init__(self, key):
         self.key = key
@@ -116,6 +115,7 @@ class FlowStats:
         self.syn_ack_seen = False
         self.rst_count = 0
         self.protocol_name = 'unknown'
+        self.syn_starts = []
 
     def to_dict(self):
         return {
@@ -189,6 +189,7 @@ class AnalysisResult:
         self.timeline_buckets = []       # list of bucket dicts
         self.bucket_size = 1.0
         self.fragment_count = 0
+        self.decode_error_packets = 0
         self.dns_queries = []            # (timestamp, query_name, qtype, rcode, src_ip)
         self.truncated = False
         self.truncation_reason = None
@@ -200,7 +201,7 @@ class AnalysisResult:
 
     @property
     def capture_duration(self):
-        if self.capture_start == float('inf') or self.capture_end == 0:
+        if self.capture_start == float('inf'):
             return 0.0
         return self.capture_end - self.capture_start
 
@@ -230,12 +231,14 @@ class AnalysisResult:
             'flow_count': self.flow_count,
             'conversation_count': len(self.conversations),
             'fragment_count': self.fragment_count,
+            'decode_error_packets': self.decode_error_packets,
             'file_format': self.file_format,
             'file_size': self.file_size,
             'parse_duration_sec': round(self.parse_duration, 3),
             'truncated': self.truncated,
             'truncation_reason': self.truncation_reason,
             'unsupported_packets': self.unsupported_packets,
+            'errors': self.errors[:50],
             'protocols': [{'name': n, 'packets': c, 'bytes': self.protocol_bytes.get(n, 0)}
                           for n, c in proto_list],
             'top_talkers': [t.to_dict() for t in top_talkers],
@@ -275,11 +278,15 @@ def analyze_packets(decoded_packets, read_result=None):
 
     for pkt in decoded_packets:
         result.total_packets += 1
+        if pkt.decode_errors:
+            result.decode_error_packets += 1
         pkt_bytes = pkt.original_len or pkt.captured_len
         result.total_bytes += pkt_bytes
 
         ts = pkt.timestamp
-        if ts > 0:
+        if ts is not None and math.isfinite(ts):
+            if result.capture_start == float('inf'):
+                result.capture_end = ts
             if ts < result.capture_start:
                 result.capture_start = ts
             if ts > result.capture_end:
@@ -315,9 +322,9 @@ def analyze_packets(decoded_packets, read_result=None):
             h = result.hosts[src_ip]
             h.bytes_out += pkt_bytes
             h.packets_out += 1
-            if ts > 0:
+            if ts is not None:
+                h.last_seen = ts if h.first_seen == float('inf') else max(h.last_seen, ts)
                 h.first_seen = min(h.first_seen, ts)
-                h.last_seen = max(h.last_seen, ts)
             h.protocols[proto] += 1
             if dst_ip:
                 h.peers.add(dst_ip)
@@ -328,9 +335,9 @@ def analyze_packets(decoded_packets, read_result=None):
             h = result.hosts[dst_ip]
             h.bytes_in += pkt_bytes
             h.packets_in += 1
-            if ts > 0:
+            if ts is not None:
+                h.last_seen = ts if h.first_seen == float('inf') else max(h.last_seen, ts)
                 h.first_seen = min(h.first_seen, ts)
-                h.last_seen = max(h.last_seen, ts)
             h.protocols[proto] += 1
             if src_ip:
                 h.peers.add(src_ip)
@@ -365,9 +372,9 @@ def analyze_packets(decoded_packets, read_result=None):
             flow = result.flows[fk]
             flow.bytes_total += pkt_bytes
             flow.packets += 1
-            if ts > 0:
+            if ts is not None:
+                flow.last_seen = ts if flow.first_seen == float('inf') else max(flow.last_seen, ts)
                 flow.first_seen = min(flow.first_seen, ts)
-                flow.last_seen = max(flow.last_seen, ts)
             flow.protocol_name = proto
 
             if pkt.tcp_flags is not None:
@@ -376,6 +383,8 @@ def analyze_packets(decoded_packets, read_result=None):
                         flow.syn_ack_seen = True
                     else:
                         flow.syn_seen = True
+                        if ts is not None:
+                            flow.syn_starts.append(ts)
                 if pkt.tcp_flags & TCP_RST:
                     flow.rst_count += 1
 
@@ -387,11 +396,18 @@ def analyze_packets(decoded_packets, read_result=None):
             conv.bytes_total += pkt_bytes
             conv.packets += 1
             conv.protocols[proto] += 1
-            if ts > 0:
+            if ts is not None:
+                conv.last_seen = ts if conv.first_seen == float('inf') else max(conv.last_seen, ts)
                 conv.first_seen = min(conv.first_seen, ts)
-                conv.last_seen = max(conv.last_seen, ts)
 
         timestamps_bytes.append((ts, pkt_bytes, proto))
+
+    # Replies belong to the reverse directional flow, including when the
+    # capture is out of order. Link them after all packets have been read.
+    for fk, flow in result.flows.items():
+        reverse = result.flows.get(FlowKey(fk.dst_ip, fk.src_ip, fk.dst_port, fk.src_port, fk.proto))
+        if reverse and flow.syn_seen:
+            flow.syn_ack_seen = flow.syn_ack_seen or reverse.syn_ack_seen
 
     # Build timeline buckets
     _build_timeline(result, timestamps_bytes)
@@ -404,14 +420,14 @@ def analyze_packets(decoded_packets, read_result=None):
 
 def _build_timeline(result, timestamps_bytes):
     """Build time-series buckets for the timeline chart."""
-    if not timestamps_bytes or result.capture_duration <= 0:
+    if not timestamps_bytes or result.capture_start == float('inf'):
         return
 
     result.bucket_size = _auto_bucket_size(result.capture_duration)
     num_buckets = int(math.ceil(result.capture_duration / result.bucket_size)) + 1
     # Cap at 500 buckets
     if num_buckets > 500:
-        result.bucket_size = result.capture_duration / 500
+        result.bucket_size = result.capture_duration / 499
         num_buckets = 500
 
     buckets = []
@@ -424,9 +440,9 @@ def _build_timeline(result, timestamps_bytes):
         })
 
     for ts, nbytes, proto in timestamps_bytes:
-        if ts <= 0:
+        if ts is None:
             continue
-        idx = int((ts - result.capture_start) / result.bucket_size)
+        idx = min(len(buckets) - 1, int((ts - result.capture_start) / result.bucket_size))
         if 0 <= idx < len(buckets):
             buckets[idx]['bytes'] += nbytes
             buckets[idx]['packets'] += 1
@@ -440,16 +456,10 @@ def _build_timeline(result, timestamps_bytes):
 
 
 def _associate_dns_names(result):
-    """Associate DNS query names with destination IPs."""
-    # Simple heuristic: associate query names with the DNS server (src of response)
-    # and with hosts that have TLS SNI matching the query
-    for ts, qname, qtype, rcode, src_ip in result.dns_queries:
-        if not qname:
-            continue
-        # Check if any host's SNI matches
-        for ip, host in result.hosts.items():
-            if qname in host.sni_names:
-                host.dns_names.add(qname)
+    """Attach observed query names only where SNI corroborates the endpoint."""
+    queried = {qname for _, qname, _, _, _ in result.dns_queries if qname}
+    for host in result.hosts.values():
+        host.dns_names.update(host.sni_names & queried)
 
 
 def get_top_hosts(result, n=300):
@@ -485,6 +495,12 @@ def query_analysis(result, query_type, **kwargs):
     Returns:
         dict with query results
     """
+    if query_type in ('top_talkers', 'conversations'):
+        n = kwargs.get('n', 10)
+        if isinstance(n, bool) or not isinstance(n, int) or not 1 <= n <= 1000:
+            return {'error': 'n must be an integer between 1 and 1000'}
+    if kwargs.get('by', 'bytes') not in ('bytes', 'packets'):
+        return {'error': 'by must be bytes or packets'}
     if query_type == 'top_talkers':
         n = kwargs.get('n', 10)
         by = kwargs.get('by', 'bytes')
@@ -540,11 +556,14 @@ def query_analysis(result, query_type, **kwargs):
         }
 
     elif query_type == 'time_window':
-        start = kwargs.get('start', result.capture_start)
+        start = kwargs.get('start', result.capture_start if result.capture_start != float('inf') else 0)
         end = kwargs.get('end', result.capture_end)
+        if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v)
+               for v in (start, end)) or start > end:
+            return {'error': 'start and end must be finite timestamps with start <= end'}
         # Filter buckets
         filtered = [b for b in result.timeline_buckets
-                    if (result.capture_start + b['time_offset'] >= start and
+                    if (result.capture_start + b['time_offset'] + result.bucket_size > start and
                         result.capture_start + b['time_offset'] <= end)]
         return {
             'query': 'time_window',

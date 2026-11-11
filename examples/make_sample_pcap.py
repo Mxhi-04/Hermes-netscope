@@ -18,7 +18,6 @@ import sys
 import struct
 import random
 import ipaddress
-import os
 from pathlib import Path
 
 
@@ -129,7 +128,6 @@ def generate_sample_pcap(output_path, seed=42):
     packets = []  # list of (timestamp_sec, raw_bytes)
 
     base_time = 1700000000.0  # reference epoch
-    gateway_ip = "192.168.1.1"
     dns_server = "192.168.1.1"
     internal_hosts = [f"192.168.1.{10 + i}" for i in range(10)]
     public_servers = ["198.51.100.10", "198.51.100.20", "203.0.113.5", "203.0.113.50"]

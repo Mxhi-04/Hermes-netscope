@@ -5,18 +5,14 @@ Registers tools, slash command, and bundled skill.
 No hooks or middleware registered (minimal capability footprint).
 """
 
-import sys
 import logging
+import shlex
 from pathlib import Path
 
-_plugin_dir = str(Path(__file__).parent.resolve())
-if _plugin_dir not in sys.path:
-    sys.path.insert(0, _plugin_dir)
-
-try:
+if __package__:
     from .tools import handle_analyze, handle_query, handle_visualize
     from .schemas import ANALYZE_SCHEMA, QUERY_SCHEMA, VISUALIZE_SCHEMA
-except ImportError:
+else:
     from tools import handle_analyze, handle_query, handle_visualize
     from schemas import ANALYZE_SCHEMA, QUERY_SCHEMA, VISUALIZE_SCHEMA
 
@@ -123,6 +119,14 @@ def register(ctx):
         pcap_path = raw_args.strip() if raw_args else ""
         if not pcap_path:
             return "Usage: /netscope <path/to/capture.pcap>"
+        if pcap_path[0:1] in ('"', "'"):
+            try:
+                parts = shlex.split(pcap_path)
+                if len(parts) != 1:
+                    return 'Usage: /netscope <path/to/capture.pcap>'
+                pcap_path = parts[0]
+            except ValueError as exc:
+                return f'Invalid quoted path: {exc}'
 
         # Run analyze
         analyze_result_str = handle_analyze(pcap_path)
@@ -141,9 +145,11 @@ def register(ctx):
         vis_result_str = handle_visualize(analysis_id)
         try:
             vis_res = json.loads(vis_result_str)
-            report_path = vis_res.get('report_path', 'unknown')
+            report_path = vis_res.get('report_path') if vis_res.get('ok') else None
+            report_error = vis_res.get('error', 'Unknown visualization error')
         except Exception:
-            report_path = "failed to generate"
+            report_path = None
+            report_error = 'Invalid visualization response'
 
         # Format output
         dur = res.get('capture_duration_sec', 0)
@@ -167,8 +173,15 @@ def register(ctx):
         else:
             lines.append("\nNo anomaly heuristics triggered.")
 
-        lines.append(f"\n📊 Interactive Report: {report_path}")
-        lines.append("Open this file in your browser to explore the network graph, replay traffic, and inspect findings.")
+        if report_path:
+            lines.append(f"\n📊 Interactive Report: {report_path}")
+            lines.append("Open this file in your browser to explore the network graph, replay traffic, and inspect findings.")
+        else:
+            lines.append(f'\nReport generation failed: {report_error}')
+        if res.get('truncated'):
+            lines.append(f"\nPartial capture: {res.get('truncation_reason')}")
+        for error in res.get('errors', [])[:3]:
+            lines.append(f'Capture warning: {error}')
         lines.append("\nNote: Findings are heuristic observations, not definitive security verdicts.")
 
         return "\n".join(lines)

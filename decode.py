@@ -11,9 +11,12 @@ Never retains payload content beyond protocol metadata.
 import struct
 import ipaddress
 
-from pcap_reader import (LINKTYPE_ETHERNET, LINKTYPE_RAW_IP,
-                         LINKTYPE_LINUX_SLL, LINKTYPE_RAW_IPV4,
-                         LINKTYPE_RAW_IPV6)
+if __package__:
+    from .pcap_reader import (LINKTYPE_ETHERNET, LINKTYPE_RAW_IP,
+                             LINKTYPE_LINUX_SLL, LINKTYPE_RAW_IPV4, LINKTYPE_RAW_IPV6)
+else:
+    from pcap_reader import (LINKTYPE_ETHERNET, LINKTYPE_RAW_IP,
+                            LINKTYPE_LINUX_SLL, LINKTYPE_RAW_IPV4, LINKTYPE_RAW_IPV6)
 
 
 # Ethernet types
@@ -37,7 +40,7 @@ TCP_ACK = 0x10
 TCP_URG = 0x20
 
 # IPv6 extension header next-header values to skip
-IPV6_EXT_HEADERS = {0, 43, 44, 50, 51, 60, 135, 139, 140}
+IPV6_EXT_HEADERS = {0, 43, 44, 51, 60, 135, 139, 140}
 
 # Maximum string lengths for sanitized output
 MAX_DNS_NAME_LEN = 253
@@ -122,8 +125,12 @@ def _decode_dns_name(data, offset, max_jumps=10):
     parts = []
     jumps = 0
     original_offset = None
+    seen = set()
 
     while offset < len(data) and jumps < max_jumps:
+        if offset in seen:
+            return '', offset
+        seen.add(offset)
         length = data[offset]
         if length == 0:
             offset += 1
@@ -138,9 +145,11 @@ def _decode_dns_name(data, offset, max_jumps=10):
             offset = pointer
             jumps += 1
             continue
+        if length > 63:
+            return '', offset
         offset += 1
         if offset + length > len(data):
-            break
+            return '', offset
         try:
             parts.append(data[offset:offset+length].decode('ascii', errors='replace'))
         except Exception:
@@ -189,6 +198,11 @@ def _decode_tls_sni(data, pkt):
         hs_type = data[5]
         if hs_type != 1:   # ClientHello
             return
+        record_end = 5 + int.from_bytes(data[3:5], 'big')
+        handshake_end = 9 + int.from_bytes(data[6:9], 'big')
+        if handshake_end > record_end or record_end > len(data):
+            return
+        data = data[:handshake_end]
 
         # Skip to extensions
         offset = 5 + 4   # record header + handshake type + length
@@ -219,11 +233,15 @@ def _decode_tls_sni(data, pkt):
         ext_len = struct.unpack('!H', data[offset:offset+2])[0]
         offset += 2
         ext_end = offset + ext_len
+        if ext_end > len(data):
+            return
 
         while offset + 4 <= ext_end and offset + 4 <= len(data):
             ext_type = struct.unpack('!H', data[offset:offset+2])[0]
             ext_data_len = struct.unpack('!H', data[offset+2:offset+4])[0]
             offset += 4
+            if offset + ext_data_len > ext_end:
+                return
 
             if ext_type == 0 and ext_data_len > 2:   # server_name
                 # SNI list length(2)
@@ -232,12 +250,14 @@ def _decode_tls_sni(data, pkt):
                 sni_list_len = struct.unpack('!H', data[offset:offset+2])[0]
                 pos = offset + 2
                 sni_end = pos + sni_list_len
+                if sni_end > offset + ext_data_len:
+                    return
 
                 while pos + 3 <= sni_end and pos + 3 <= len(data):
                     name_type = data[pos]
                     name_len = struct.unpack('!H', data[pos+1:pos+3])[0]
                     pos += 3
-                    if name_type == 0 and pos + name_len <= len(data):
+                    if name_type == 0 and pos + name_len <= sni_end:
                         try:
                             sni = data[pos:pos+name_len].decode('ascii', errors='replace')
                             pkt.tls_sni = _sanitize_string(sni, MAX_SNI_LEN)
@@ -314,6 +334,12 @@ def _decode_ipv4(data, pkt):
 
     pkt.ip_version = 4
     total_len = struct.unpack('!H', data[2:4])[0]
+    if version_ihl >> 4 != 4 or total_len < ihl:
+        pkt.decode_errors.append('Invalid IPv4 version or total length')
+        return
+    if total_len > len(data):
+        pkt.decode_errors.append('Truncated IPv4 payload')
+    data = data[:total_len]
     pkt.frag_id = struct.unpack('!H', data[4:6])[0]
 
     flags_frag = struct.unpack('!H', data[6:8])[0]
@@ -342,7 +368,13 @@ def _decode_ipv6(data, pkt):
         return
 
     pkt.ip_version = 6
-    # payload_length = struct.unpack('!H', data[4:6])[0]
+    if data[0] >> 4 != 6:
+        pkt.decode_errors.append('Invalid IPv6 version')
+        return
+    payload_length = struct.unpack('!H', data[4:6])[0]
+    if payload_length + 40 > len(data):
+        pkt.decode_errors.append('Truncated IPv6 payload')
+    data = data[:40 + payload_length]
     next_header = data[6]
     pkt.ttl = data[7]   # hop limit
 
@@ -362,9 +394,31 @@ def _decode_ipv6(data, pkt):
         if offset + 2 > len(data):
             pkt.decode_errors.append("Truncated IPv6 extension header")
             return
+        header_type = next_header
         next_header = data[offset]
-        ext_len = (data[offset + 1] + 1) * 8
+        if header_type == 44:
+            ext_len = 8
+            if offset + ext_len > len(data):
+                pkt.decode_errors.append('Truncated IPv6 fragment header')
+                return
+            fragment = int.from_bytes(data[offset+2:offset+4], 'big')
+            pkt.frag_offset = fragment & 0xfff8
+            pkt.is_fragment = bool(pkt.frag_offset or fragment & 1)
+            pkt.frag_id = int.from_bytes(data[offset+4:offset+8], 'big')
+        elif header_type == 51:
+            ext_len = (data[offset + 1] + 2) * 4
+        else:
+            ext_len = (data[offset + 1] + 1) * 8
+        if offset + ext_len > len(data):
+            pkt.decode_errors.append('Truncated IPv6 extension header')
+            return
         offset += ext_len
+        if pkt.frag_offset:
+            break
+    else:
+        if next_header in IPV6_EXT_HEADERS:
+            pkt.decode_errors.append('Too many IPv6 extension headers')
+            return
 
     pkt.ip_proto = next_header
     transport_data = data[offset:]
@@ -375,7 +429,7 @@ def _decode_transport(data, pkt):
     """Decode transport layer (TCP/UDP/ICMP)."""
     if pkt.is_fragment and pkt.frag_offset > 0:
         # Not the first fragment — no transport header
-        pkt.protocol_name = 'IPv4-fragment'
+        pkt.protocol_name = f'IPv{pkt.ip_version}-fragment'
         return
 
     if pkt.ip_proto == PROTO_TCP:
@@ -400,6 +454,10 @@ def _decode_tcp(data, pkt):
     pkt.src_port = struct.unpack('!H', data[0:2])[0]
     pkt.dst_port = struct.unpack('!H', data[2:4])[0]
     data_offset = ((data[12] >> 4) & 0xF) * 4
+    if data_offset < 20 or data_offset > len(data):
+        pkt.protocol_name = 'TCP'
+        pkt.decode_errors.append('Invalid TCP data offset')
+        return
     pkt.tcp_flags = data[13]
     pkt.payload_len = max(0, len(data) - data_offset) if data_offset <= len(data) else 0
 
@@ -423,8 +481,10 @@ def _decode_tcp(data, pkt):
         pkt.protocol_name = 'FTP'
     elif ports & {53, 5353}:
         pkt.protocol_name = 'DNS'
-        if pkt.payload_len > 0:
-            _decode_dns(data[data_offset:], pkt)
+        if pkt.payload_len >= 2:
+            dns_len = int.from_bytes(data[data_offset:data_offset+2], 'big')
+            if dns_len <= pkt.payload_len - 2:
+                _decode_dns(data[data_offset+2:data_offset+2+dns_len], pkt)
     elif ports & {25, 587, 465}:
         pkt.protocol_name = 'SMTP'
     elif ports & {143, 993}:
@@ -445,7 +505,14 @@ def _decode_udp(data, pkt):
     pkt.src_port = struct.unpack('!H', data[0:2])[0]
     pkt.dst_port = struct.unpack('!H', data[2:4])[0]
     udp_len = struct.unpack('!H', data[4:6])[0]
-    pkt.payload_len = max(0, udp_len - 8)
+    if udp_len < 8:
+        pkt.protocol_name = 'UDP'
+        pkt.decode_errors.append('Invalid UDP length')
+        return
+    if udp_len > len(data):
+        pkt.decode_errors.append('Truncated UDP payload')
+    data = data[:udp_len]
+    pkt.payload_len = len(data) - 8
 
     ports = {pkt.src_port, pkt.dst_port}
     if ports & {53, 5353}:
@@ -494,6 +561,9 @@ def _decode_arp(data, pkt):
         return
 
     try:
+        if data[:6] != b'\x00\x01\x08\x00\x06\x04':
+            pkt.decode_errors.append('Unsupported ARP address layout')
+            return
         pkt.arp_op = struct.unpack('!H', data[6:8])[0]
         pkt.arp_sender_ip = str(ipaddress.IPv4Address(data[14:18]))
         pkt.arp_target_ip = str(ipaddress.IPv4Address(data[24:28]))
@@ -554,7 +624,7 @@ def _decode_ethernet(data, pkt):
     offset = 14
 
     # Handle VLAN tags
-    while ethertype == ETHERTYPE_VLAN:
+    while ethertype in (ETHERTYPE_VLAN, 0x88a8):
         if offset + 4 > len(data):
             pkt.decode_errors.append("Truncated VLAN tag")
             return

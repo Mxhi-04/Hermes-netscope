@@ -6,10 +6,15 @@ Vanilla JS + canvas/SVG, dark theme, responsive with 300-host cap.
 """
 
 import json
-import html
+import math
+import os
+import tempfile
 import time
 from pathlib import Path
-from analyze import get_top_hosts
+if __package__:
+    from .analyze import get_top_hosts
+else:
+    from analyze import get_top_hosts
 
 
 def _escape_json_for_html(obj):
@@ -32,6 +37,13 @@ def _sanitize_for_display(s, max_len=120):
 def _build_report_data(analysis, findings, focus_host=None,
                        protocol_filter=None, time_start=None, time_end=None):
     """Build the data structure embedded in the HTML report."""
+    for value in (time_start, time_end):
+        if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)):
+            raise ValueError('Time filters must be finite timestamps')
+    if time_start is not None and time_end is not None and time_start > time_end:
+        raise ValueError('start must be <= end')
+    if protocol_filter is not None and protocol_filter not in analysis.protocol_counts:
+        raise ValueError(f'Unknown protocol: {protocol_filter}')
     top_hosts, other_info = get_top_hosts(analysis, n=300)
 
     # Build nodes
@@ -50,6 +62,8 @@ def _build_report_data(analysis, findings, focus_host=None,
             'bytes_out': h.bytes_out,
             'protocols': dict(h.protocols),
             'focused': h.ip == focus_host,
+            'first_seen': h.first_seen if h.first_seen != float('inf') else 0,
+            'last_seen': h.last_seen,
         })
 
     # Build edges (conversations between top hosts only)
@@ -113,6 +127,8 @@ def _build_report_data(analysis, findings, focus_host=None,
         'bucket_size': analysis.bucket_size,
         'findings': finding_list,
         'other_hosts': other_info,
+        'initial_protocol': protocol_filter,
+        'initial_window': [time_start, time_end] if time_start is not None or time_end is not None else None,
         'generated_at': time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime()),
     }
 
@@ -126,14 +142,15 @@ _HTML_TEMPLATE = r'''<!DOCTYPE html>
 <title>netScope Report</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#0f1117;--surface:#1a1d27;--surface2:#252833;--border:#333647;--text:#e0e0e8;--text2:#9095a8;--accent:#4fc3f7;--accent2:#81c784;--warn:#ffb74d;--danger:#e57373;--info:#64b5f6}
+:root{--bg:#f3f2ed;--surface:#faf9f5;--surface2:#eeecf4;--border:#d3cfe6;--text:#211a3f;--text2:#6d6880;--accent:#1400ff;--accent2:#5543e8;--warn:#9b5e00;--danger:#c73c29;--info:#1400ff}
 body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;overflow:hidden;height:100vh}
+#app{height:100vh;display:flex;flex-direction:column}
 .header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 .header h1{font-size:18px;color:var(--accent);font-weight:600}
 .header .stat{font-size:12px;color:var(--text2);background:var(--surface2);padding:4px 10px;border-radius:12px}
 .header .stat b{color:var(--text)}
 .heuristic-note{font-size:11px;color:var(--warn);margin-left:auto;font-style:italic}
-.main{display:flex;height:calc(100vh - 52px)}
+.main{display:flex;flex:1;min-height:0}
 .graph-panel{flex:1;position:relative;overflow:hidden}
 .graph-panel canvas{position:absolute;top:0;left:0}
 .sidebar{width:320px;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
@@ -146,6 +163,8 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .proto-chip.active{background:var(--accent);color:var(--bg);border-color:var(--accent)}
 .proto-chip:hover{border-color:var(--accent)}
 .timeline-panel{height:120px;background:var(--surface);border-top:1px solid var(--border);position:relative;padding:4px 12px}
+.timeline-panel{flex-shrink:0}
+@media(max-width:700px){.main{flex-direction:column}.graph-panel{min-height:180px}.sidebar{width:100%;height:210px;border-left:0;border-top:1px solid var(--border)}.header{gap:6px;padding:8px}.heuristic-note{margin-left:0}.proto-chips{max-height:80px;overflow:auto}}
 .timeline-panel canvas{width:100%;height:100%}
 .replay-controls{position:absolute;top:4px;right:12px;display:flex;gap:6px;align-items:center}
 .replay-controls button{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:2px 8px;border-radius:4px;cursor:pointer;font-size:11px}
@@ -170,6 +189,25 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .tooltip .tt-ip{color:var(--accent);font-weight:600;font-size:13px}
 .tooltip .tt-row{color:var(--text2);margin-top:2px}
 .truncation-notice{background:#332200;color:var(--warn);padding:4px 12px;font-size:11px;text-align:center}
+.header{padding:18px 26px;gap:12px;border-bottom:1px solid var(--accent);background:var(--bg)}
+.header h1{font-family:Impact,'Arial Narrow',sans-serif;font-size:38px;font-weight:400;letter-spacing:-1px;line-height:1}
+.brand{margin-right:18px}.brand-label{font:9px ui-monospace,monospace;letter-spacing:1.4px;color:var(--accent);margin-top:7px}
+.header .stat{border:1px solid var(--border);border-radius:3px;background:transparent;padding:8px 11px;font:11px ui-monospace,monospace}
+.header .stat b{color:var(--accent)}.heuristic-note{color:var(--text2);font:10px ui-monospace,monospace;text-transform:uppercase;letter-spacing:.5px}
+.graph-panel{background-image:linear-gradient(#1400ff06 1px,transparent 1px),linear-gradient(90deg,#1400ff06 1px,transparent 1px);background-size:48px 48px}
+.graph-label{position:absolute;left:24px;top:22px;z-index:1;color:var(--accent);font:10px ui-monospace,monospace;letter-spacing:1.2px;pointer-events:none}
+.graph-legend{position:absolute;bottom:20px;left:24px;z-index:1;color:var(--text2);font:10px ui-monospace,monospace;background:var(--bg);padding:5px 8px;pointer-events:none}
+.proto-chips{gap:8px;padding:13px 24px;background:var(--bg)}
+.proto-chip{border-radius:3px;font:10px ui-monospace,monospace;letter-spacing:.3px;padding:6px 10px;background:transparent;color:var(--accent)}
+.proto-chip.active{color:#fff}.sidebar{width:365px;background:var(--surface)}
+.sidebar-tab button{padding:15px;font:11px ui-monospace,monospace;text-transform:uppercase;letter-spacing:1px}
+.sidebar-content{padding:16px}.finding{border:1px solid var(--border);border-left:3px solid var(--border);border-radius:3px;padding:14px;background:transparent;margin-bottom:12px}
+.finding-kind{font:12px ui-monospace,monospace;text-transform:uppercase;letter-spacing:.5px}.finding-why{font-size:12px;line-height:1.65}
+.finding-badges{margin:9px 0}.badge{border-radius:2px;background:var(--surface2);padding:3px 6px;font:9px ui-monospace,monospace}
+.timeline-panel{height:144px;border-top:1px solid var(--accent);padding:15px 24px;background:var(--bg)}
+.replay-controls{right:24px;top:8px}.replay-controls button{border-radius:3px;color:var(--accent);font:10px ui-monospace,monospace;background:var(--bg);padding:5px 9px}
+.tooltip{box-shadow:0 10px 30px #1400ff12;background:var(--surface);border-radius:3px}.host-detail .row{gap:12px}.host-detail .row span{overflow-wrap:anywhere;min-width:0}
+@media(max-width:700px){.header{padding:10px 14px;gap:7px}.header h1{font-size:28px}.header .stat{padding:5px;font-size:9px}.brand{margin-right:0}.brand-label{font-size:7px}.heuristic-note{font-size:8px}.proto-chips{padding:8px 12px;gap:5px;max-height:80px}.proto-chip{padding:5px 7px;font-size:9px}.sidebar{width:100%;height:220px}.graph-panel{min-height:160px}.timeline-panel{height:115px;padding:8px 12px}.graph-label{left:14px;top:10px;font-size:8px}.graph-legend{left:10px;bottom:8px;font-size:8px}.sidebar-content{padding:10px}}
 </style>
 </head>
 <body>
@@ -189,7 +227,7 @@ function fmtDur(s){if(s>3600)return(s/3600).toFixed(1)+"h";if(s>60)return(s/60).
 
 // Build header
 var hdr=document.createElement("div");hdr.className="header";
-hdr.innerHTML='<h1>⬡ netScope</h1>'+
+hdr.innerHTML='<div class="brand"><h1>netScope</h1><div class="brand-label">HERMES AGENT / NETWORK INTELLIGENCE</div></div>'+
 '<span class="stat"><b>'+fmtNum(S.total_packets)+'</b> packets</span>'+
 '<span class="stat"><b>'+fmtBytes(S.total_bytes)+'</b></span>'+
 '<span class="stat"><b>'+fmtDur(S.duration_sec)+'</b> duration</span>'+
@@ -204,12 +242,14 @@ if(S.truncated){var tn=document.createElement("div");tn.className="truncation-no
 var main=document.createElement("div");main.className="main";
 var gp=document.createElement("div");gp.className="graph-panel";
 var canvas=document.createElement("canvas");gp.appendChild(canvas);
+var graphLabel=document.createElement('div');graphLabel.className='graph-label';graphLabel.textContent='01 / NETWORK TOPOLOGY';gp.appendChild(graphLabel);
+var graphLegend=document.createElement('div');graphLegend.className='graph-legend';graphLegend.textContent='● PRIVATE / RESERVED     ◇ OTHER ADDRESSES · DRAG TO EXPLORE';gp.appendChild(graphLegend);
 var tooltip=document.createElement("div");tooltip.className="tooltip";tooltip.style.display="none";gp.appendChild(tooltip);
 main.appendChild(gp);
 
 // Protocol chips
 var chipBar=document.createElement("div");chipBar.className="proto-chips";
-var activeProto=null;
+var activeProto=D.initial_protocol||null;
 var allChip=document.createElement("span");allChip.className="proto-chip active";allChip.textContent="All";
 allChip.onclick=function(){activeProto=null;updateChips();updateGraph()};
 chipBar.appendChild(allChip);
@@ -218,9 +258,11 @@ P.slice(0,15).forEach(function(p){
   c.onclick=function(){activeProto=(activeProto===p.name)?null:p.name;updateChips();updateGraph()};
   chipBar.appendChild(c);
 });
+var resetBtn=document.createElement('button');resetBtn.className='proto-chip';resetBtn.textContent='Reset view';
+resetBtn.onclick=function(){activeProto=null;timeWindow=null;selectedHost=null;fitView();updateChips();renderSidebar()};chipBar.appendChild(resetBtn);
 function updateChips(){var chips=chipBar.querySelectorAll(".proto-chip");chips.forEach(function(c){
   if(!activeProto&&c.textContent.startsWith("All"))c.className="proto-chip active";
-  else if(activeProto&&c.textContent.startsWith(activeProto))c.className="proto-chip active";
+  else if(activeProto&&c.textContent.split(' (')[0]===activeProto)c.className="proto-chip active";
   else c.className="proto-chip";
 })}
 
@@ -261,11 +303,12 @@ var playSpeed=1;
 var playTime=0;
 var playRAF=null;
 var timeWindow=null;
+if(D.initial_window){timeWindow=[D.initial_window[0]===null?0:D.initial_window[0]-S.capture_start,D.initial_window[1]===null?S.duration_sec:D.initial_window[1]-S.capture_start]}
 var speeds=[1,4,16];var speedIdx=0;
 
 // Graph simulation
 var nodeMap={};
-N.forEach(function(n){nodeMap[n.id]=n;n.x=Math.random()*600+100;n.y=Math.random()*400+100;n.vx=0;n.vy=0;n.r=Math.max(4,Math.min(30,Math.sqrt(n.bytes/1e4)))});
+N.forEach(function(n,i){nodeMap[n.id]=n;var a=i*2.39996,r=220*Math.sqrt((i+1)/Math.max(1,N.length));n.x=400+Math.cos(a)*r;n.y=300+Math.sin(a)*r;n.vx=0;n.vy=0;n.r=Math.max(4,Math.min(30,Math.sqrt(n.bytes/1e4)))});
 
 var maxEdgeBytes=1;E.forEach(function(e){if(e.bytes>maxEdgeBytes)maxEdgeBytes=e.bytes});
 
@@ -327,13 +370,13 @@ canvas.onwheel=function(e){
 function escHTML(s){var d=document.createElement("div");d.textContent=s;return d.innerHTML}
 
 // Proto colors
-var protoColors={"TCP":"#4fc3f7","UDP":"#81c784","DNS":"#ffb74d","HTTP":"#e57373","TLS":"#ce93d8","HTTPS":"#ce93d8","SSH":"#a5d6a7","ICMP":"#90a4ae","ARP":"#78909c","QUIC":"#80deea","FTP":"#ef9a9a","Telnet":"#ef9a9a","SMTP":"#bcaaa4","NTP":"#b0bec5"};
+var protoColors={"TCP":"#1400ff","UDP":"#667090","DNS":"#b16c00","HTTP":"#ba4c3c","TLS":"#7565c0","SSH":"#39736b","ICMP":"#667080","ARP":"#667080","QUIC":"#454590","FTP":"#ba4c3c","Telnet":"#ba4c3c","SMTP":"#a07b60","NTP":"#667080"};
 function getProtoColor(p){return protoColors[p]||"#666"}
 
 // Force simulation
 function simulate(){
-  var alpha=0.1,repulse=5000,attract=0.0001,damping=0.85,centerForce=0.001;
-  var cx=canvas.width/(2*zoom),cy=canvas.height/(2*zoom);
+  var alpha=0.1,repulse=1500,attract=0.0001,damping=0.85,centerForce=0.05;
+var cx=(canvas.width/2-panX)/zoom,cy=(canvas.height/2-panY)/zoom;
   for(var i=0;i<N.length;i++){
     var a=N[i];
     // Center gravity
@@ -351,7 +394,7 @@ function simulate(){
     var f=attract*d;s.vx+=dx*f;s.vy+=dy*f;t.vx-=dx*f;t.vy-=dy*f;
   });
   // Apply
-  N.forEach(function(n){if(n===dragNode)return;n.x+=n.vx*damping;n.y+=n.vy*damping;n.vx*=damping;n.vy*=damping});
+  N.forEach(function(n){if(n===dragNode)return;n.vx=Math.max(-8,Math.min(8,n.vx));n.vy=Math.max(-8,Math.min(8,n.vy));n.x+=n.vx*damping;n.y+=n.vy*damping;n.vx*=damping;n.vy*=damping});
 }
 
 // Rendering
@@ -365,6 +408,7 @@ function drawGraph(){
   E.forEach(function(e){
     var s=nodeMap[e.source],t=nodeMap[e.target];if(!s||!t)return;
     if(activeProto&&!e.protocols[activeProto])return;
+    if(timeWindow&&(e.last_seen-S.capture_start<timeWindow[0]||e.first_seen-S.capture_start>timeWindow[1]))return;
     var w=Math.max(0.5,Math.min(6,e.bytes/maxEdgeBytes*6));
     ctx.beginPath();ctx.moveTo(s.x,s.y);ctx.lineTo(t.x,t.y);
     ctx.strokeStyle=getProtoColor(e.dominant_protocol);ctx.globalAlpha=0.3;ctx.lineWidth=w;ctx.stroke();ctx.globalAlpha=1;
@@ -383,19 +427,20 @@ function drawGraph(){
   // Nodes
   N.forEach(function(n){
     if(activeProto&&!n.protocols[activeProto])return;
+    if(timeWindow&&(n.last_seen-S.capture_start<timeWindow[0]||n.first_seen-S.capture_start>timeWindow[1]))return;
     ctx.beginPath();
     if(n.is_private){ctx.arc(n.x,n.y,n.r,0,Math.PI*2)}
     else{// Diamond for external
       ctx.moveTo(n.x,n.y-n.r);ctx.lineTo(n.x+n.r,n.y);ctx.lineTo(n.x,n.y+n.r);ctx.lineTo(n.x-n.r,n.y);ctx.closePath();
     }
-    var col=n.is_private?"#4fc3f7":"#81c784";
-    if(n.focused)col="#ffb74d";
-    if(selectedHost===n.id)col="#ff7043";
+    var col=n.is_private?"#1400ff":"#302840";
+    if(n.focused)col="#bd6500";
+    if(selectedHost===n.id)col="#cc4e31";
     ctx.fillStyle=col;ctx.globalAlpha=0.8;ctx.fill();ctx.globalAlpha=1;
-    ctx.strokeStyle="#fff";ctx.lineWidth=selectedHost===n.id?2:0.5;ctx.stroke();
+    ctx.strokeStyle="#f3f2ed";ctx.lineWidth=selectedHost===n.id?2:0.5;ctx.stroke();
     // Label for large nodes
     if(n.r>10||selectedHost===n.id){
-      ctx.font="10px sans-serif";ctx.fillStyle="#fff";ctx.textAlign="center";
+      ctx.font="11px monospace";ctx.fillStyle="#1400ff";ctx.textAlign="center";
       ctx.fillText(n.id,n.x,n.y+n.r+12);
     }
   });
@@ -414,7 +459,7 @@ function drawTimeline(){
   TL.forEach(function(b,i){
     var bh=Math.max(1,(b.b/maxB)*(h-20));
     var x=i*barW;
-    tc.fillStyle=(timeWindow&&b.t>=timeWindow[0]&&b.t<=timeWindow[1])?"#4fc3f7":"#333647";
+    tc.fillStyle=(timeWindow&&b.t>=timeWindow[0]&&b.t<=timeWindow[1])?"#1400ff":"#b8b1dc";
     tc.fillRect(x,h-15-bh,barW-1,bh);
   });
   // Spike markers
@@ -424,17 +469,17 @@ function drawTimeline(){
       var idx=Math.floor(t0/BS);
       if(idx>=0&&idx<TL.length){
         var x=idx*barW+barW/2;
-        tc.fillStyle="#e57373";tc.beginPath();tc.moveTo(x-4,4);tc.lineTo(x+4,4);tc.lineTo(x,10);tc.fill();
+        tc.fillStyle="#c73c29";tc.beginPath();tc.moveTo(x-4,4);tc.lineTo(x+4,4);tc.lineTo(x,10);tc.fill();
       }
     }
   });
   // Playhead
   if(playing||playTime>0){
     var px=(playTime/(S.duration_sec||1))*w;
-    tc.strokeStyle="#ffb74d";tc.lineWidth=2;tc.beginPath();tc.moveTo(px,0);tc.lineTo(px,h);tc.stroke();
+    tc.strokeStyle="#1400ff";tc.lineWidth=2;tc.beginPath();tc.moveTo(px,0);tc.lineTo(px,h);tc.stroke();
   }
   // Time axis
-  tc.fillStyle="#9095a8";tc.font="10px sans-serif";tc.textAlign="center";
+  tc.fillStyle="#6d6880";tc.font="10px monospace";tc.textAlign="center";
   var numLabels=Math.min(8,TL.length);
   for(var i=0;i<=numLabels;i++){
     var t=(S.duration_sec||0)*(i/numLabels);
@@ -518,7 +563,7 @@ function renderSidebar(){
 function updateGraph(){drawGraph()}
 
 // Replay
-playBtn.onclick=function(){playing=!playing;playBtn.textContent=playing?"⏸ Pause":"▶ Play";if(playing){playTime=0;playLoop()}else{if(playRAF)cancelAnimationFrame(playRAF)}};
+playBtn.onclick=function(){playing=!playing;lastFrameTime=0;playBtn.textContent=playing?"⏸ Pause":"▶ Play";if(playing){playLoop()}else{if(playRAF)cancelAnimationFrame(playRAF)}};
 speedBtn.onclick=function(){speedIdx=(speedIdx+1)%speeds.length;playSpeed=speeds[speedIdx];speedBtn.textContent=playSpeed+"x"};
 
 var lastFrameTime=0;
@@ -535,8 +580,16 @@ function playLoop(){
 }
 
 // Main loop
+function fitView(){
+  if(!N.length)return;
+  var xs=N.map(function(n){return n.x}),ys=N.map(function(n){return n.y});
+  var x0=Math.min.apply(null,xs)-40,x1=Math.max.apply(null,xs)+40,y0=Math.min.apply(null,ys)-40,y1=Math.max.apply(null,ys)+40;
+  zoom=Math.max(.05,Math.min(1.5,gp.clientWidth/(x1-x0),gp.clientHeight/(y1-y0)));
+  panX=(gp.clientWidth-(x0+x1)*zoom)/2;panY=(gp.clientHeight-(y0+y1)*zoom)/2;
+}
+new ResizeObserver(fitView).observe(gp);
 function loop(){simulate();drawGraph();drawTimeline();requestAnimationFrame(loop)}
-renderSidebar();
+updateChips();renderSidebar();
 requestAnimationFrame(loop);
 })();
 </script>
@@ -565,5 +618,16 @@ def generate_report(analysis, findings, output_path, focus_host=None,
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(html_content, encoding='utf-8')
+    # Publish atomically with owner-only permissions. A partial write must not
+    # corrupt an existing report, and a symlink must not redirect the write.
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8',
+                                         dir=output.parent, delete=False) as handle:
+            temporary = Path(handle.name)
+            handle.write(html_content)
+        os.replace(temporary, output)
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink()
 

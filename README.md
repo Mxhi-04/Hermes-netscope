@@ -1,343 +1,224 @@
-<p align="center">
-  <img src="assets/hero-banner.svg" alt="Hermes netScope — Offline Network Capture Forensics" width="100%">
-</p>
+<div align="center">
 
-<p align="center">
-  <a href="https://github.com/NousResearch/hermes-agent"><img src="https://img.shields.io/badge/HERMES_AGENT-CORE_PLUGIN-FF5500?style=for-the-badge&logoColor=white" alt="Hermes Agent"></a>
-  <a href="https://nousresearch.com/"><img src="https://img.shields.io/badge/NOUS_RESEARCH-RESEARCH_GRADE-FFAA00?style=for-the-badge" alt="Nous Research"></a>
-  <a href="#-architecture--pipeline"><img src="https://img.shields.io/badge/DEPENDENCIES-0_(STDLIB_ONLY)-00F0FF?style=for-the-badge" alt="Zero Dependencies"></a>
-  <a href="#-security--air-gapped-sandbox"><img src="https://img.shields.io/badge/TELEMETRY-NONE_(AIR--GAPPED)-00E599?style=for-the-badge" alt="Air Gapped"></a>
-  <a href="#-license"><img src="https://img.shields.io/badge/LICENSE-MIT-A0AEC0?style=for-the-badge" alt="MIT License"></a>
-</p>
+<a href="https://nousresearch.com/"><img src="assets/brand/nous-logo.png" width="64" alt="Nous Research logo"></a>
 
----
+<br>
 
-<p align="center">
-  <img src="assets/hermes-hero.jpg" alt="Hermes Forensics Guardian" width="100%" style="border-radius: 12px; border: 1px solid #232838;">
-</p>
+<p><strong>A COMMUNITY PLUGIN FOR HERMES AGENT</strong></p>
 
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│  NOUS RESEARCH // HERMES AGENT ECOSYSTEM                                              │
-│  PROJECT      : netScope (⚚ Hermes Network Intelligence & Forensics)                   │
-│  MISSION      : Swift, Deep, Air-Gapped Packet Inspection & Deterministic Anomaly Replay│
-│  SECURITY     : 100% Offline • Strict CSP • Zero Cloud Egress • Zero Native Binaries   │
-└────────────────────────────────────────────────────────────────────────────────────────┘
-```
+<img src="assets/readme-hero.png" width="100%" alt="netScope — Make the network legible. Electric blue typography beside attributed Nous Research mission artwork.">
 
-> *“In ancient myth, **Hermes** was the swift herald of the gods, the patron of travelers, and the guardian of boundaries who could traverse any threshold in the blink of an eye. In modern infrastructure, **netScope** equips Hermes Agent to watch over every boundary across your network — dissecting wire traffic with godlike speed and total privacy.”*
+<h3>Turn a packet capture into a conversation.</h3>
 
-**netScope** brings deep, deterministic, and 100% offline packet capture analysis to [Hermes Agent](https://github.com/NousResearch/hermes-agent). Feed Hermes any `.pcap` or `.pcapng` file to reconstruct flows, map conversations, unmask stealthy reconnaissance, and interact with a cybernetic, self-contained visual dashboard complete with force-directed network topology and temporal traffic replay.
+<p>Local <code>.pcap</code> and <code>.pcapng</code> analysis. Explainable findings. An interactive report you can keep.</p>
 
-Pure Python standard library only. **Zero external dependencies. Zero network calls. No telemetry.**
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-1400ff?style=flat-square" alt="MIT license"></a>
+<img src="https://img.shields.io/badge/runtime-Python%20stdlib-1400ff?style=flat-square" alt="Python standard library runtime">
+<img src="https://img.shields.io/badge/network-offline-1400ff?style=flat-square" alt="Offline analysis">
+<a href="docs/AUDIT.md"><img src="https://img.shields.io/badge/validation-audited-1400ff?style=flat-square" alt="Audit and validation evidence"></a>
+
+<br><br>
+
+<p><a href="#quick-start">Quick start</a> &nbsp; / &nbsp; <a href="assets/netscope-demo.mp4">Watch the film</a> &nbsp; / &nbsp; <a href="#three-tools-one-investigation">Tools</a> &nbsp; / &nbsp; <a href="docs/AUDIT.md">Audit</a></p>
+
+</div>
 
 ---
 
-## 📑 Table of Contents
+## See the signal.
 
-- [⚚ The Hermes Paradigm](#-the-hermes-paradigm)
-- [⚡ Architecture & Pipeline](#-architecture--pipeline)
-- [🖥️ Interactive Dashboard Deep Dive](#-interactive-dashboard-deep-dive)
-- [🚀 Quickstart Tutorial: Zero to Insights](#-quickstart-tutorial-zero-to-insights)
-  - [1. Installation & Doctor Verification](#1-installation--doctor-verification)
-  - [2. Generate Synthetic Capture Data](#2-generate-synthetic-capture-data)
-  - [3. Instant Slash Command Analysis](#3-instant-slash-command-analysis)
-  - [4. Conversational Investigation with Hermes](#4-conversational-investigation-with-hermes)
-  - [5. Visualizing & Replaying Traffic](#5-visualizing--replaying-traffic)
-- [🧠 Deterministic Heuristics Matrix](#-deterministic-heuristics-matrix)
-- [🛠️ Tool Reference & Natural Language Integration](#-tool-reference--natural-language-integration)
-- [🛡️ Security & Air-Gapped Sandbox](#-security--air-gapped-sandbox)
-- [⚖️ Limits & Heuristics Disclaimer](#-limits--heuristics-disclaimer)
-- [📄 License](#-license)
+An unfamiliar connection. A sudden burst. A DNS pattern that deserves a second look. **netScope gives Hermes structured evidence to investigate them**: hosts, directional flows, conversations, protocol totals, and time buckets.
 
----
+Analysis runs on your machine. The plugin makes no network requests and needs no third-party Python packages. The model you use with Hermes still follows your chosen provider’s data policy; capture-derived metadata returned to Hermes can enter that conversation.
 
-## ⚚ The Hermes Paradigm
+<div align="center">
+<img src="assets/report-demo.gif" width="100%" alt="Real netScope report replaying the bundled synthetic capture with protocol filters, network topology, findings, and a visible timeline.">
+<br>
+<sub>Actual plugin output · bundled synthetic traffic · no production capture data</sub>
+</div>
 
-Network forensics is frequently plagued by bloated dependencies, native C library vulnerabilities, and telemetry-laden cloud services. **netScope** redefines packet analysis by following the core philosophy of **Nous Research** and **Hermes Agent**:
+## Built for the investigation.
 
-| Principle | Traditional Tools (Wireshark, Zeek, SaaS) | Hermes netScope |
-| :--- | :--- | :--- |
-| **Dependencies** | Heavy C/C++ runtimes, libpcap, Python wheels | **Zero external dependencies** (Pure Python 3 stdlib) |
-| **Privacy** | Often uploads captures to cloud APIs or queries telemetry | **100% Air-gapped**, zero network calls, zero DNS leaks |
-| **Interface** | Cluttered multi-window desktop GUIs or raw text streams | **Conversational Hermes Agent** + **Single-file HTML Replay** |
-| **Anomalies** | Opaque black-box ML or manual complex BPF filters | **Explainable, deterministic mathematics** (MAD, CV, Entropy) |
-| **Portability** | Architecture-specific compiled binaries | Run anywhere Python 3 runs (macOS, Linux, Windows, BSD) |
+| Capability | What you get |
+| :-- | :-- |
+| **Read the capture** | Classic pcap in both byte orders, microsecond and nanosecond timestamps; pcapng sections, interfaces, timestamp resolution and offset. |
+| **Follow connections** | IPv4 and IPv6 hosts, directional five-tuple flows, bidirectional IP conversations, top talkers, and protocol totals. |
+| **Find a starting point** | Deterministic heuristics for traffic bursts, scan-like patterns, periodic connections, unusual DNS labels, many subdomains, and ports associated with cleartext protocols. |
+| **Ask follow-ups** | Seven structured query types over a cached analysis, without reading the capture again. |
+| **Explore locally** | A standalone HTML report with a draggable topology, protocol filters, host inspection, finding selection, and traffic replay at 1×, 4×, or 16×. |
 
----
+## The report, in focus.
 
-## ⚡ Architecture & Pipeline
+<img src="assets/report-overview.png" width="100%" alt="The actual Nous-inspired netScope report: electric blue typography, off-white graph canvas, restrained protocol controls, and an explainable findings panel.">
 
-netScope streams packets incrementally using a memory-bounded standard library pipeline:
+<table>
+<tr>
+<td width="50%"><img src="assets/report-dns.png" width="100%" alt="Real report filtered to DNS conversations."><p><b>Isolate a protocol.</b><br><sub>Reduce the topology to conversations carrying the selected protocol.</sub></p></td>
+<td width="50%"><img src="assets/report-host.png" width="100%" alt="Real report with host metadata and related findings in the inspection panel."><p><b>Inspect an endpoint.</b><br><sub>Read observed names, traffic volume, protocol counts, and related findings.</sub></p></td>
+</tr>
+</table>
 
-<p align="center">
-  <img src="assets/pipeline.svg" alt="netScope Pipeline Architecture" width="100%">
-</p>
+### A 69-second introduction.
 
-1. **Multi-Format Streaming Reader (`pcap_reader.py`)**  
-   Processes classic `.pcap` (microsecond & nanosecond timestamps, little/big endian) and modern `.pcapng` (SHB, IDB, EPB, SPB) formats with interface timestamp resolution. It reads raw byte structures via `struct.unpack` without loading the full file into memory.
-2. **Layer 2–7 Dissector (`decode.py`)**  
-   Dissects Ethernet II, 802.1Q VLAN tags, IPv4, IPv6 (with chained extension header traversal), TCP (flags, window, payload offsets), UDP, ICMP/ICMPv6, and ARP. Lightweight extraction parses DNS queries/responses, TLS Server Name Indication (SNI), and HTTP `Host` headers without persisting packet payloads.
-3. **Deterministic Heuristics Engine (`heuristics.py`)**  
-   Executes robust mathematical models to detect anomalous bursts (Median Absolute Deviation), horizontal/vertical port sweeps, periodic beaconing intervals (Coefficient of Variation), and DNS tunneling exfiltration (Shannon entropy).
-4. **Interactive Delivery & Replay (`report.py` & `tools.py`)**  
-   Feeds structured JSON context to Hermes Agent for conversational reasoning, while synthesizing a zero-CDN, standalone visual report.
+[![Watch the netScope motion film, featuring real plugin output, animated diagrams, and female narration](assets/demo-poster.png)](assets/netscope-demo.mp4)
 
----
+**[Watch or download the 1080p film →](assets/netscope-demo.mp4)** · [Captions](assets/demo-captions.srt) · [Storyboard](assets/demo-storyboard.jpg)
 
-## 🖥️ Interactive Dashboard Deep Dive
+Original motion graphics, real report captures, and female narration generated with Sarvam Bulbul v3. Nous Research’s logo appears at the opening and closing. GitHub links the committed MP4 as a file; the GIF above plays directly in the README.
 
-Every analysis can generate a self-contained, dark-mode HTML dashboard written to `~/.hermes/netscope/reports/`. It contains **no CDNs, no remote fonts, and no third-party scripts**, enforcing a strict Content Security Policy (`default-src 'none'`).
+## Quick start
 
-<p align="center">
-  <img src="assets/hermes-forensics.jpg" alt="Hermes Forensics Cockpit" width="100%" style="border-radius: 12px; border: 1px solid #232838; margin-bottom: 16px;">
-</p>
+### Run the real tools locally
 
-<p align="center">
-  <img src="assets/dashboard-preview.svg" alt="netScope Interactive Dashboard Preview" width="100%">
-</p>
-
-### Dashboard Systems
-
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│ [01] FORCE GRAPH TOPOLOGY   : Draggable nodes, auto-clustering internal vs external    │
-│ [02] TEMPORAL TRAFFIC REPLAY: Scrubber controls (1x, 4x, 16x) with animated packets    │
-│ [03] PROTOCOL FILTER CHIPS  : Dynamic filtering across TCP, UDP, DNS, TLS, HTTP, ICMP  │
-│ [04] TRAFFIC BURST TIMELINE : 1-second bucket histogram with MAD anomaly spike markers │
-│ [05] JUMP-TO-FINDING LINKS  : Instant camera focusing and timeline synchronization   │
-│ [06] HOST INSPECTION DRAWER : Ingress/egress volumes, SNIs, and active peer breakdown   │
-└────────────────────────────────────────────────────────────────────────────────────────┘
-```
-
-- **🌐 Force-Directed Topology**: Automatically clusters private subnets (`192.168.0.0/16`, `10.0.0.0/8`, `172.16.0.0/12`) away from external infrastructure. Nodes scale by byte volume; edges scale by total transfer weight. Nodes are physics-reactive, draggable, and clickable.
-- **⏱️ Temporal Replay Engine**: Watch traffic flow in chronological order. Toggle speeds between `1x`, `4x`, and `16x` with animated particle pulses traveling along active conversation paths in real time.
-- **🔍 Protocol Filter Chips**: Instant canvas filtering by protocol (`ALL`, `TCP`, `UDP`, `DNS`, `TLS`, `HTTP`, `ICMP`, `ARP`) with instantaneous graph re-weighting.
-- **🎯 Finding-to-Timeline Link**: Clicking any anomaly card in the side drawer navigates the graph directly to the involved host nodes and snaps the playback scrubber to the exact occurrence timestamp.
-- **📋 Host Inspection Drawer**: Deep inspection of selected endpoints displaying total ingress/egress bytes, associated DNS query names, TLS SNI certificates, active peers, and flow counts.
-
----
-
-## 🚀 Quickstart Tutorial: Zero to Insights
-
-Follow this hands-on tutorial to inspect a capture and generate your first interactive forensics dashboard in under 60 seconds.
-
-### 1. Installation & Doctor Verification
-
-Install netScope into your Hermes Agent environment:
+Python **3.11+** is recommended to match current Hermes. The analyzer itself uses only the standard library.
 
 ```bash
-# Via Hermes plugin catalog
-hermes plugins install netscope
-hermes plugins enable netscope
-```
-
-Or clone into your local Hermes plugins folder:
-
-```bash
-git clone https://github.com/Mxhi-04/hermes-netscope.git ~/.hermes/plugins/netscope
-hermes plugins enable netscope
-```
-
-Verify your installation with Hermes Doctor:
-
-```bash
-hermes plugins doctor ~/.hermes/plugins/netscope --ci
-```
-
-```text
-[✓] Hermes plugin manifests valid: plugin.yaml, SKILL.md
-[✓] Zero external Python dependencies required (pure stdlib)
-[✓] Stdlib struct, socket, math, json modules verified
-[✓] Reports directory verified: ~/.hermes/netscope/reports
-[✓] Status: HERMES NETSCOPE READY
-```
-
----
-
-### 2. Generate Synthetic Capture Data
-
-netScope includes a pure Python capture synthesizer (`examples/make_sample_pcap.py`) that generates realistic, non-trivial network traffic using RFC-reserved subnets (`RFC 1918` and `RFC 5737`):
-
-```bash
+git clone https://github.com/Mxhi-04/Hermes-netscope.git
+cd Hermes-netscope
 python3 examples/make_sample_pcap.py sample.pcap
+python3 demo.py sample.pcap --report
 ```
 
-This demo capture synthesizes:
-- Baseline DNS and web browsing across 10 internal hosts.
-- Rapid SYN port scan probing internal workstations.
-- Periodic C2 beaconing every ~30 seconds with minimal jitter.
-- High-entropy DNS tunneling queries consistent with data exfiltration.
-- Sudden 400 KB traffic volume surge.
+The demo calls the same handlers registered with Hermes. It prints JSON and writes the report under `$HERMES_HOME/netscope/reports/`, or `~/.hermes/netscope/reports/` when `HERMES_HOME` is unset. Open the returned `report_path` in a browser.
 
----
-
-### 3. Instant Slash Command Analysis
-
-Run the built-in slash command to perform a complete sweep:
+**Observed output from the bundled capture, seed 42:**
 
 ```text
-/netscope sample.pcap
+Packets          1,480
+Wire bytes       526,635
+Hosts            20
+Directional flows 812
+Conversations    53
+Duration         278.957 seconds
 ```
 
-Hermes immediately summarizes the traffic and generates the interactive visual report:
+The synthetic fixture deliberately contains scan-like probes, periodic connections, unusual DNS queries, bursts, and ports associated with cleartext protocols. It demonstrates the detectors; it is not an accuracy benchmark.
 
-```text
-⚚ Hermes netScope Forensics Summary: sample.pcap
-────────────────────────────────────────────────────────────────────────────
-Duration    : 64.20s (1,248 packets, 842.1 KB)
-Endpoints   : 14 unique hosts across 42 active flows
-Dominant    : TCP (68.4%), UDP/DNS (24.1%), TLS (5.2%), HTTP (2.3%)
+### Use it with Hermes
 
-Heuristic Observations:
-  [HIGH] SYN Port Scan Detected
-         Host 192.168.1.105 probed 64 unique ports on 192.168.1.10 (t=14.2s - 17.4s)
-  [MED]  Periodic Beaconing
-         Host 192.168.1.45 -> 198.51.100.24 every 30.1s (CV = 0.082 < 0.20 threshold)
-  [MED]  High-Entropy DNS Exfiltration
-         Host 192.168.1.10 made 18 queries with entropy > 4.2 bits/char (tunneling pattern)
-
-Visual Report Generated:
-file:///Users/username/.hermes/netscope/reports/sample_report.html
-```
-
----
-
-### 4. Conversational Investigation with Hermes
-
-Engage Hermes in dialogue to dig into specific hosts, anomalous beacons, or TLS domain traffic:
-
-````text
-User: "Which host sent the highest volume of outbound data, and what domains did it contact?"
-
-Hermes: [Invokes netscope_query with query="top_talkers"]
-Host 192.168.1.10 was the top talker:
-  • Outbound Data : 421.8 KB across 312 packets
-  • Resolved SNIs : api.github.com, updates.microsoft.com
-  • External DNS  : one.one.one.one (1.1.1.1)
-
-User: "Tell me more about the beaconing detection. Why did it trigger?"
-
-Hermes: [Invokes netscope_query with query="findings", filter_host="192.168.1.45"]
-Finding #2 triggered because host 192.168.1.45 initiated 12 connections to 
-198.51.100.24 with regular inter-arrival intervals:
-  • Mean Interval : 30.12 seconds
-  • Std Deviation : 2.47 seconds
-  • Coefficient of Variation (CV) : 0.082
-
-Because the CV is well below the 0.20 anomaly threshold, the timing exhibits 
-programmatic, low-jitter beaconing characteristics consistent with automated C2 or telemetry.
-````
-
----
-
-### 5. Visualizing & Replaying Traffic
-
-Open the generated HTML report in any web browser:
+Install directly from this repository; catalog acceptance is a separate review.
 
 ```bash
-open ~/.hermes/netscope/reports/sample_report.html
+hermes plugins install Mxhi-04/Hermes-netscope
+hermes plugins enable netscope
 ```
 
-1. **Topology Exploration**: Click and drag nodes to watch the spring physics settle.
-2. **Filter Protocols**: Click the `DNS` chip to isolate resolver flows and tunneling queries.
-3. **Trace the Attack**: Click on `[HIGH] SYN Port Scan` in the sidebar to center the camera on `192.168.1.105` and highlight its probed ports.
-4. **Replay the Incident**: Hit `[ ▶ PLAY ]` at `4x` speed and watch packet pulses traverse the network as the scan and beaconing unfold chronologically.
+Then, in Hermes:
 
----
-
-## 🧠 Deterministic Heuristics Matrix
-
-netScope deliberately avoids opaque, non-deterministic black-box models in favor of **explainable, deterministic mathematics**:
-
-```
-┌─────────────────────────┬──────────────────────────────────┬───────────────────────────────────────────┐
-│ HEURISTIC               │ MATHEMATICAL MODEL               │ DETECTION THRESHOLD                       │
-├─────────────────────────┼──────────────────────────────────┼───────────────────────────────────────────┤
-│ Traffic Spikes          │ Robust Z-Score via MAD           │ Absolute Modified Z > 3.5 across 1s bins  │
-│ Port / Host Scanning    │ Unique Dest Ports / IPs per sec  │ > 30 unique ports in < 5 seconds          │
-│ Periodic C2 Beaconing   │ Coefficient of Variation (σ / μ) │ CV < 0.20 across ≥ 5 intervals            │
-│ DNS Tunneling / Exfil   │ Shannon Entropy & Label Length   │ Entropy > 4.0 bits/char or labels > 45ch  │
-│ Cleartext Protocols     │ Plaintext Port & Header Match    │ Telnet (23), FTP (21), HTTP basic auth    │
-└─────────────────────────┴──────────────────────────────────┴───────────────────────────────────────────┘
+```text
+/netscope /absolute/path/to/capture.pcap
 ```
 
-### Median Absolute Deviation (MAD)
-Traditional standard deviation is easily skewed by outlier bursts. netScope computes modified Z-scores using **Median Absolute Deviation**:
+Paths containing spaces can be quoted. Example follow-ups:
 
-$$MAD = \text{median}(|X_i - \tilde{X}|)$$
+> Which hosts transferred the most data?<br>
+> Show me the conversations involving 192.168.1.55.<br>
+> Explain the periodic connection finding and generate a report focused on that host.
 
-$$M_i = \frac{0.6745 \cdot (X_i - \tilde{X})}{MAD}$$
+For a local development checkout, validate with the current [Hermes plugin tooling](https://hermes-agent.nousresearch.com/docs/developer-guide/plugins/):
 
-Bins with $M_i > 3.5$ are flagged as statistically significant bursts.
-
-### Beaconing Coefficient of Variation (CV)
-Automated malware beacons, telemetry tasks, and C2 agents operate on programmatic sleep loops. For inter-arrival intervals $\Delta t$:
-
-$$CV = \frac{\sigma_{\Delta t}}{\mu_{\Delta t}}$$
-
-A sequence with $CV < 0.20$ and $\ge 5$ connections triggers a high-confidence beacon observation.
-
----
-
-## 🛠️ Tool Reference & Natural Language Integration
-
-Hermes Agent has direct access to four atomic tools registered in `plugin.yaml`:
-
-### `netscope_analyze`
-Ingests a `.pcap` or `.pcapng` file, constructs connection states, executes heuristics, and returns structured summary metrics:
-```json
-{
-  "pcap_path": "/path/to/capture.pcap",
-  "focus_host": "192.168.1.105",
-  "max_packets": 2000000
-}
+```bash
+hermes plugins doctor . --ci
+hermes plugins validate .
 ```
 
-### `netscope_query`
-Performs in-memory queries against an existing analysis ID without re-parsing the capture:
-- `query="top_talkers"`: Ranked host byte & packet metrics.
-- `query="conversations"`: Peer-to-peer flows filtered by host or protocol.
-- `query="dns_queries"`: DNS resolutions, question types, and response codes.
-- `query="tls_hosts"`: Extracted SNIs and certificate hostnames.
-- `query="findings"`: Filtered list of heuristic anomaly records.
+## Three tools. One investigation.
 
-### `netscope_visualize`
-Generates the self-contained HTML dashboard with embedded JSON data, canvas topology, and timeline replay:
-```json
-{
-  "analysis_id": "ns_a1b2c3d4e5f6",
-  "focus_host": "192.168.1.10"
-}
+| Tool | Input | Result |
+| :-- | :-- | :-- |
+| `netscope_analyze` | `pcap_path`, optional `max_packets` | Summary, warnings, compact findings, and an `analysis_id`. |
+| `netscope_query` | `analysis_id`, `query`, query-specific arguments | Structured answers from the cached analysis. |
+| `netscope_visualize` | `analysis_id`, optional `focus_host`, `protocol`, `start`, `end` | An absolute path to a self-contained HTML report. Time bounds are Unix timestamps. |
+
+```python
+import json
+from tools import handle_analyze, handle_query, handle_visualize
+
+analysis = json.loads(handle_analyze("sample.pcap"))
+assert analysis["ok"], analysis
+analysis_id = analysis["analysis_id"]
+
+print(handle_query(analysis_id, "top_talkers", n=5, by="bytes"))
+print(handle_query(analysis_id, "findings"))
+print(handle_visualize(analysis_id, focus_host="192.168.1.55"))
 ```
 
----
+Run this example from the cloned repository. Keep follow-up calls in the same process: the cache holds the five most recent analyses and is cleared on restart.
 
-## 🛡️ Security & Air-Gapped Sandbox
+<details>
+<summary><b>All seven query types</b></summary>
 
-netScope is purpose-built for sensitive enterprise, security operations, and air-gapped forensic environments:
+| Query | Arguments | What it answers |
+| :-- | :-- | :-- |
+| `top_talkers` | `n`, `by="bytes"` or `"packets"` | Which endpoints dominate the capture? |
+| `host_detail` | `ip` | What traffic and conversations involve this host? |
+| `conversations` | `n` | Which bidirectional IP pairs carry the most bytes? |
+| `protocol_breakdown` | — | How many packets and bytes belong to each protocol label? |
+| `time_window` | `start`, `end` | Which aggregate timeline buckets overlap these Unix timestamps? |
+| `findings` | — | What patterns triggered, and why? |
+| `dns_names` | — | Which endpoint names were observed via SNI or HTTP Host? |
 
-- **🔒 Zero Network Egress**: Makes no socket connections, no telemetry beacons, and no external DNS lookups.
-- **🧱 Strict Content Security Policy**: Generated reports enforce `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:`. No scripts or stylesheets can ever load from external origins.
-- **🧹 Sanitized Dissection**: All packet-derived metadata (DNS domain labels, TLS SNI headers, HTTP hosts) is strictly sanitized against control characters and length-truncated prior to display.
-- **🚫 Zero Payload Retention**: Raw packet payloads are never persisted in memory or written into HTML reports. Only structural protocol headers and metadata are analyzed.
+`n` accepts 1–1,000. DNS question names are not treated as DNS answer-to-IP mappings. Protocol names are lightweight classifications, often based on ports.
 
----
+</details>
 
-## ⚖️ Limits & Heuristics Disclaimer
+## From bytes to context.
 
-### Engine Boundaries
-- **Default File Cap**: 256 MB soft limit per capture.
-- **Default Packet Cap**: 2,000,000 packets per stream.
-- **Graph Node Cap**: The visual topology graph renders the top 300 active hosts to ensure 60fps canvas performance; remaining hosts are grouped into aggregate metrics.
+```mermaid
+flowchart LR
+    A[Local pcap / pcapng] --> B[Validate & read]
+    B --> C[Decode protocol metadata]
+    C --> D[Aggregate hosts, flows & time]
+    D --> E[Explainable heuristics]
+    E --> F[Hermes tools & queries]
+    E --> G[Standalone HTML report]
+    style A fill:#f3f2ed,stroke:#1400ff,color:#1400ff
+    style G fill:#1400ff,stroke:#1400ff,color:#fff
+```
 
-### Heuristics are Observations, Not Verdicts
-> Anomaly flags represent patterns consistent with specific network behaviors (e.g., automated scanning or periodic polling). Benign software, vulnerability scanners, health check monitors, NTP synchronizations, and misconfigured services frequently display identical traffic profiles. Always correlate netScope findings with endpoint logs, auth logs, and host-level telemetry.
+The plugin registers **three tools, one slash command, and one bundled skill** through public Hermes APIs. No hooks, middleware, core patches, model overrides, or telemetry.
 
----
+## Privacy, with visible limits.
 
-## 📄 License
+- **Local file access.** The plugin can read the capture path you supply. Analysis leaves the source file unchanged and writes a report only when requested.
+- **Limited metadata extraction.** DNS question names, TLS ClientHello SNI, HTTP Host headers, and SSH banners can be read. Credentials and packet bodies are not extracted into reports; raw packet buffers are released after decoding.
+- **Sensitive reports.** Hostnames, addresses, and traffic metadata may still be private. Reports are written atomically with owner-only file permissions on systems that support them.
+- **Untrusted strings.** Capture-derived names remain data. Embedded report JSON escapes HTML delimiters, and capture text is displayed through text nodes. The report blocks external resources with a Content Security Policy.
+- **Finite resources.** Defaults: 256 MiB file size, 2,000,000 packets, and a 30-second **reader** budget. This is not an end-to-end timeout or a constant-memory parser; memory grows with packets, hosts, and flows. The graph shows at most 300 hosts.
+- **Lightweight inspection.** No TCP stream reassembly, IP fragment reassembly, TLS decryption, checksum validation, full Wireshark dissection, or packet-exact replay. Replay shows conversation lifetimes and aggregate time buckets. pcapng simple packets lack timestamps and are excluded from timed analysis.
+- **Heuristics need context.** Periodic retries, legitimate scanners, health checks, and unusual domains can trigger findings. Protocol ports do not establish encryption status. A quiet result is not a security guarantee.
 
-Distributed under the **MIT License**. See [LICENSE](LICENSE) for details.
+## Tested where it matters.
 
-Developed with open intelligence for the [Hermes Agent](https://github.com/NousResearch/hermes-agent) ecosystem by [Nous Research](https://nousresearch.com/).
+The audit added regression coverage for corrupt captures, protocol boundaries, false-positive scans, time buckets, unsafe strings, package isolation, and error handling. Current Hermes’s Plugin Doctor, catalog admission validator, and real registry dispatch were also exercised.
+
+**[Read the audit and evidence →](docs/AUDIT.md)** · [Catalog validation](docs/catalog-validation.json) · [Runtime validation](docs/runtime-validation.json)
+
+```bash
+python3 -m venv .venv
+# macOS / Linux
+source .venv/bin/activate
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+python -m ruff check . --select F
+```
+
+CI is configured for Linux, macOS, and Windows on Python 3.11 and 3.13. Local validation results and untested environments are recorded in the audit.
+
+## Credits & visual references
+
+Built by **Mxhi-04** for the [Hermes Agent](https://github.com/NousResearch/hermes-agent) ecosystem. This is an independent community project; it is not an official Nous Research plugin or an endorsement.
+
+The visual direction follows [Nous Research](https://nousresearch.com/): electric blue, warm paper, emphatic typography, and engraved artwork. The motion references include MotionVideo’s [kinetic type](https://motionvideo.xyz/videos/shneural-2abdfa), [shape morphing](https://motionvideo.xyz/videos/twoclipping-5cba86), [feature teaser](https://motionvideo.xyz/videos/utsavchopra30-50540b), and [engraving-style](https://motionvideo.xyz/videos/lexnlin-038035) examples. These are design references; their videos are not incorporated into this project.
+
+[Media provenance, typography licenses, and reproduction notes →](docs/MEDIA.md)
+
+[MIT](LICENSE) applies to the project code. Nous logos and artwork retain their respective rights and are credited separately. Bundled fonts carry their SIL Open Font Licenses.
+
+<div align="center">
+<br>
+<a href="https://nousresearch.com/"><img src="assets/brand/nous-seal.svg" width="100" alt="Nous Research engraved seal, credited as third-party brand artwork"></a>
+<br><br>
+<sub>LOCAL ANALYSIS. CLEARER ANSWERS.</sub>
+</div>

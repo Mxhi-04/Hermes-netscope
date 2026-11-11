@@ -5,28 +5,23 @@ All handlers return JSON strings, never raise. Errors are
 {"ok": false, "error": "..."}.
 """
 
-import sys
 import json
 import os
-import hashlib
-import time
+import uuid
 import logging
 from pathlib import Path
+from threading import RLock
 
-_plugin_dir = str(Path(__file__).parent.resolve())
-if _plugin_dir not in sys.path:
-    sys.path.insert(0, _plugin_dir)
-
-try:
+if __package__:
     from .pcap_reader import read_pcap, PcapError, DEFAULT_MAX_PACKETS
     from .decode import decode_packet
-    from .analyze import analyze_packets, query_analysis, get_top_hosts
+    from .analyze import analyze_packets, query_analysis
     from .heuristics import detect_all
     from .report import generate_report
-except ImportError:
+else:
     from pcap_reader import read_pcap, PcapError, DEFAULT_MAX_PACKETS
     from decode import decode_packet
-    from analyze import analyze_packets, query_analysis, get_top_hosts
+    from analyze import analyze_packets, query_analysis
     from heuristics import detect_all
     from report import generate_report
 
@@ -35,6 +30,7 @@ logger = logging.getLogger(__name__)
 # In-memory analysis cache (bounded)
 _analysis_cache = {}
 _MAX_CACHE_SIZE = 5
+_cache_lock = RLock()
 
 
 def _get_reports_dir():
@@ -49,17 +45,23 @@ def _get_reports_dir():
 
 
 def _make_analysis_id(pcap_path):
-    """Generate a deterministic analysis ID from the path and time."""
-    h = hashlib.sha256(f"{pcap_path}:{time.time()}".encode()).hexdigest()[:12]
-    return f"ns_{h}"
+    """Generate an unguessable process-local analysis identifier."""
+    return f"ns_{uuid.uuid4().hex[:16]}"
 
 
 def _cache_put(analysis_id, data):
     """Store analysis in cache, evicting oldest if needed."""
-    if len(_analysis_cache) >= _MAX_CACHE_SIZE:
-        oldest = next(iter(_analysis_cache))
-        del _analysis_cache[oldest]
-    _analysis_cache[analysis_id] = data
+    with _cache_lock:
+        if len(_analysis_cache) >= _MAX_CACHE_SIZE:
+            oldest = next(iter(_analysis_cache))
+            del _analysis_cache[oldest]
+        _analysis_cache[analysis_id] = data
+
+
+def _cache_get(analysis_id):
+    with _cache_lock:
+        return _analysis_cache.get(analysis_id)
+
 
 
 def handle_analyze(pcap_path, max_packets=None):
@@ -86,6 +88,9 @@ def handle_analyze(pcap_path, max_packets=None):
         for raw_pkt in read_result.packets:
             decoded.append(decode_packet(raw_pkt))
 
+        # Release raw payloads before aggregation and never cache them.
+        read_result.packets.clear()
+
         # Analyze
         analysis = analyze_packets(decoded, read_result)
 
@@ -97,7 +102,6 @@ def handle_analyze(pcap_path, max_packets=None):
         _cache_put(analysis_id, {
             'analysis': analysis,
             'findings': findings,
-            'decoded_packets': decoded,
             'pcap_path': pcap_path,
         })
 
@@ -133,13 +137,13 @@ def handle_query(analysis_id, query, **kwargs):
         JSON string with query results.
     """
     try:
-        if analysis_id not in _analysis_cache:
+        cached = _cache_get(analysis_id)
+        if cached is None:
             return json.dumps({
                 'ok': False,
                 'error': f"Analysis not found: {analysis_id}. Run netscope_analyze first."
             })
 
-        cached = _analysis_cache[analysis_id]
         analysis = cached['analysis']
         findings = cached['findings']
 
@@ -172,13 +176,13 @@ def handle_visualize(analysis_id, focus_host=None, protocol=None,
         JSON string with report path and file size.
     """
     try:
-        if analysis_id not in _analysis_cache:
+        cached = _cache_get(analysis_id)
+        if cached is None:
             return json.dumps({
                 'ok': False,
                 'error': f"Analysis not found: {analysis_id}. Run netscope_analyze first."
             })
 
-        cached = _analysis_cache[analysis_id]
         analysis = cached['analysis']
         findings = cached['findings']
 
